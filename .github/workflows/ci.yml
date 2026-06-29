@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: Sintaxis + manifests + empaquetado
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # Lint ligero: chequeo de sintaxis de todo el JS/ESM sin toolchain extra.
+      - name: Chequeo de sintaxis (node --check)
+        run: |
+          find core sdk skills vscode-extension \
+            \( -name '*.mjs' -o -name '*.js' \) \
+            -not -path '*/node_modules/*' -not -path '*/bundled/*' \
+            -print0 | xargs -0 -n1 node --check
+          echo "Sintaxis OK"
+
+      # Valida que los manifests parsean y traen los campos clave.
+      - name: Validar manifests (plugin + marketplace + extensión)
+        run: |
+          node -e '
+            const fs = require("fs");
+            const need = (obj, keys, file) => keys.forEach(k => {
+              if (obj[k] == null) { console.error("Falta " + k + " en " + file); process.exit(1); }
+            });
+            const mkt = JSON.parse(fs.readFileSync(".claude-plugin/marketplace.json", "utf8"));
+            need(mkt, ["name", "owner", "plugins"], "marketplace.json");
+            const plg = JSON.parse(fs.readFileSync(".claude-plugin/plugin.json", "utf8"));
+            need(plg, ["name", "version", "description"], "plugin.json");
+            const pkg = JSON.parse(fs.readFileSync("vscode-extension/package.json", "utf8"));
+            need(pkg, ["name", "publisher", "version", "engines", "main"], "package.json");
+            console.log("Manifests OK:", mkt.name, "/", plg.name, "/", pkg.publisher + "." + pkg.name);
+          '
+
+      # Empaqueta la extensión: corre vscode:prepublish (bundle.mjs) y verifica
+      # que el .vsix queda self-contained. Cualquier rotura de empaquetado falla aquí.
+      - name: Empaquetar extensión (vsce package)
+        working-directory: vscode-extension
+        run: npx --yes @vscode/vsce package --out ai-emos.vsix
+
+      - name: Verificar que el .vsix es self-contained
+        working-directory: vscode-extension
+        run: |
+          for p in extension/bundled/core/render.mjs extension/bundled/assets/timeline.html extension/LICENSE.txt; do
+            unzip -l ai-emos.vsix | grep -q "$p" || { echo "FALTA en el .vsix: $p"; exit 1; }
+          done
+          echo ".vsix self-contained OK"
+
+      - name: Subir el .vsix como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-emos-vsix
+          path: vscode-extension/ai-emos.vsix
+          if-no-files-found: error
