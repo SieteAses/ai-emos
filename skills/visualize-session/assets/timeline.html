@@ -218,9 +218,10 @@ function header(){
   document.getElementById('title').textContent = DATA.title || ('Sesión '+(DATA.sessionId||''));
   const s=DATA.summary||{}; const span=DATA.startedAt?`${ldtm(DATA.startedAt)} → ${ldtm(DATA.endedAt)}`:'';
   document.getElementById('sub').textContent=`fuente: ${DATA.source} · modelos: ${(s.models||[]).join(', ')||'n/d'} · ${span}`;
-  const sc=s.stepCounts||{}, st=(b,l)=>`<div class="stat"><b>${b}</b><span>${l}</span></div>`;
+  const sc=s.stepCounts||{}, st=(b,l,t)=>`<div class="stat"${t?` title="${esc(t)}"`:''}><b>${b}</b><span>${l}</span></div>`;
   const total=Object.values(sc).reduce((a,b)=>a+b,0);
-  document.getElementById('stats').innerHTML=st(fmt(total),'pasos')+st(fmt((s.tokens||{}).total||0),'tokens')+st(sc.agent||0,'sub-agentes')+st(sc.tool_call||0,'herramientas')+st((s.decisions||[]).length,'decisiones')+st((s.findings||[]).length,'a revisar')+st(ms(s.durationMs)||'n/d','duración');
+  const nTurns=(s.turns||[]).length, nSkills=(s.skills||[]).length;
+  document.getElementById('stats').innerHTML=st(fmt(total),'pasos')+st(fmt((s.tokens||{}).total||0),'tokens','La granularidad real de tokens es por turno de LLM (no por herramienta). Mira el desglose por turno en el panel de resumen.')+st(nTurns,'turnos')+st(sc.agent||0,'sub-agentes')+st(sc.tool_call||0,'herramientas')+(nSkills?st(nSkills,'skills'):'')+st((s.decisions||[]).length,'decisiones')+st((s.findings||[]).length,'a revisar')+st(ms(s.durationMs)||'n/d','duración');
 }
 function legend(){
   const sc=(DATA.summary&&DATA.summary.stepCounts)||{};
@@ -329,11 +330,17 @@ function defaultDetail(){
   const byKind=Object.keys(sc).map(k=>`<span class="lg"><span class="kdot" style="background:${kc(k)}"></span>${KIND_ES[k]||k}: ${sc[k]}</span>`).join('');
   const ag=(s.agents||[]).slice().sort((a,b)=>b.tokens-a.tokens).slice(0,8)
     .map(a=>`<div class="kv"><span class="kk">${esc(a.name||'?')}</span><span class="kvs">${fmt(a.tokens)} tok · ${a.durationMs?ms(a.durationMs):'?'}${a.stats&&a.stats.toolUseCount?' · '+a.stats.toolUseCount+' tools':''}</span></div>`).join('');
+  const VIA={'skill-tool':'tool Skill','command':'slash-command','bash':'script (Bash)'};
+  const sk=(s.skills||[]).map(k=>`<div class="kv"><span class="kk">${esc(k.name)}</span><span class="kvs">${k.count}×${(k.via||[]).length?' · '+k.via.map(v=>VIA[v]||v).join(' / '):''}</span></div>`).join('');
+  const turnTools=ts=>{const c={};(ts||[]).forEach(l=>{const n=String(l).replace(/^tool:|^skill:|^agente:/,'');c[n]=(c[n]||0)+1;});return Object.entries(c).map(([n,k])=>k>1?`${n}×${k}`:n).join(' · ');};
+  const tn=(s.turns||[]).map(t=>{const tools=turnTools(t.tools);return `<div class="kv"><span class="kk">Turno ${t.turn}${t.model?' · '+esc(String(t.model).replace(/^claude-/,''))}:</span><span class="kvs">${t.tokens?fmt(t.tokens.total)+' tok':'—'}${tools?' · '+esc(tools):''}</span></div>`;}).join('');
   document.getElementById('detail').innerHTML=
     `<div class="d-h"><span class="d-ttl">${esc(DATA.title||'Resumen de la sesión')}</span></div>
      <div class="d-meta">Selecciona un paso en la línea de tiempo para ver su I/O. Las cards de <b>sub-agente</b> abren su grafo de llamadas y el detalle de cada sub-llamada. Los <b>tramos a revisar</b> están en un reporte aparte.</div>
      <div class="d-sub">composición</div><div class="legend" style="padding:0">${byKind}</div>
-     ${ag?`<div class="d-sub">sub-agentes por tokens</div>${ag}`:''}`;
+     ${sk?`<div class="d-sub">skills usadas</div>${sk}`:''}
+     ${ag?`<div class="d-sub">sub-agentes por tokens</div>${ag}`:''}
+     ${tn?`<div class="d-sub" title="Los tokens del log se reportan por turno de LLM, no por herramienta individual.">tokens por turno · qué corrió cada uno</div>${tn}`:''}`;
 }
 
 // ---- búsqueda ----

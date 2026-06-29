@@ -92,8 +92,14 @@ Si el usuario no menciona calidad, NO actives el judge: el análisis mecánico y
 ## Notas
 
 - **Honestidad de tokens:** la granularidad real es por turno de LLM y por
-  sub-agente, no por herramienta individual. El HTML lo refleja ("tokens del
-  turno"); no prometas costo por-tool.
+  sub-agente, no por herramienta individual (el log no atribuye coste por tool).
+  El resumen incluye un **desglose por turno** (`summary.turns`): coste de cada
+  turno y qué herramientas corrió dentro, con la suma exacta = total de la sesión.
+  No prometas costo por-tool: muestra el del turno y qué pasó en él.
+- **Skills ejecutadas por Bash:** si una skill se invoca corriendo su script
+  (`node skills/<n>/scripts/cli.mjs`) en vez del tool `Skill`, igual se cuenta:
+  el adaptador la detecta por la ruta del comando (`summary.skills[].via` indica
+  `skill-tool` / `command` / `bash`).
 - El template (`assets/timeline.html` / `assets/dashboard.html`) es la fuente de la
   interactividad (colapsar, anidar sub-agentes, filtrar por tipo, saltar a los
   tramos a revisar). Tu trabajo es correr el script y reportar la ruta.
