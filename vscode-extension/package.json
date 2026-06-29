@@ -30,7 +30,42 @@
         "command": "aiEmos.openFile",
         "title": "Visualizar archivo (NDJSON/OTel/Cursor/Codex)",
         "category": "ai-emos"
+      },
+      {
+        "command": "aiEmos.liveSession",
+        "title": "Ver sesión en vivo (se refresca al cambiar)",
+        "category": "ai-emos"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "ai-emos",
+      "properties": {
+        "aiEmos.criteria.tokens.turnBudget": {
+          "type": "number",
+          "default": 80000,
+          "description": "Tokens frescos (input+output) por turno por encima de los cuales el turno se marca como caro."
+        },
+        "aiEmos.criteria.tokens.agentBudget": {
+          "type": "number",
+          "default": 150000,
+          "description": "Tokens totales de un sub-agente por encima de los cuales se marca como caro."
+        },
+        "aiEmos.criteria.durationMs.tool": {
+          "type": "number",
+          "default": 30000,
+          "description": "Milisegundos por encima de los cuales una herramienta se marca como lenta."
+        },
+        "aiEmos.criteria.durationMs.agent": {
+          "type": "number",
+          "default": 300000,
+          "description": "Milisegundos por encima de los cuales un sub-agente se marca como lento."
+        },
+        "aiEmos.criteria.baseline.sigma": {
+          "type": "number",
+          "default": 2,
+          "description": "Desviaciones estándar sobre la media histórica del agente para marcarlo como atípico."
+        }
+      }
+    }
   }
 }

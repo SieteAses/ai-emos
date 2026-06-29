@@ -42,15 +42,13 @@
 {"generatedFrom":0,"totals":{"tokens":0,"decisions":0,"findings":0,"sessions":0},"byAgent":[],"bySkill":[],"sessions":[]}
 </script>
 <script>
-const D = JSON.parse(document.getElementById('report-data').textContent);
 const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
 const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmtDur = ms => ms==null?'—':ms>=60000?(ms/60000).toFixed(1)+'m':ms>=1000?(ms/1000).toFixed(1)+'s':Math.round(ms)+'ms';
+const fmtPct = r => !r?'0%':(r*100).toFixed(r<0.1?1:0)+'%';
+const toolPills = tools => (tools||[]).slice(0,5).map(t=>`<span class="pill">${esc(t.name)} ${t.count}</span>`).join(' ') || '<span class="pill">—</span>';
 
-document.getElementById('sub').textContent = `${D.totals.sessions} sesiones agregadas`;
 const stat=(b,l)=>`<div class="stat"><b>${b}</b><span>${l}</span></div>`;
-document.getElementById('stats').innerHTML =
-  stat(fmt(D.totals.tokens),'tokens totales') + stat(D.totals.sessions,'sesiones') +
-  stat(D.totals.decisions,'decisiones humanas') + stat(D.totals.findings,'tramos a revisar');
 
 function barTable(rows, cols){
   const max = Math.max(1, ...rows.map(r=>r._bar||0));
@@ -65,9 +63,24 @@ function barTable(rows, cols){
   return h+'</tbody></table>';
 }
 
+function applyData(D){
+document.getElementById('sub').textContent = `${D.totals.sessions} sesiones agregadas`;
+document.getElementById('stats').innerHTML =
+  stat(fmt(D.totals.tokens),'tokens totales') + stat(D.totals.sessions,'sesiones') +
+  stat(D.totals.decisions,'decisiones humanas') + stat(D.totals.findings,'tramos a revisar');
+
 document.getElementById('byAgent').innerHTML = barTable(
   D.byAgent.map(a=>({...a,_bar:a.tokens})),
-  [{h:'agente',fn:a=>esc(a.name)},{h:'llamadas',k:'calls',num:1},{h:'tokens',fn:a=>fmt(a.tokens),num:1},{h:'',bar:1}]);
+  [
+    {h:'agente',fn:a=>esc(a.name)},
+    {h:'llamadas',k:'calls',num:1},
+    {h:'tokens',fn:a=>fmt(a.tokens),num:1},
+    {h:'prom. tok',fn:a=>fmt(a.tokensAvg),num:1},
+    {h:'prom. dur',fn:a=>fmtDur(a.durationAvg),num:1},
+    {h:'% error',fn:a=>fmtPct(a.errorRate),num:1},
+    {h:'herramientas comunes',fn:a=>toolPills(a.tools)},
+    {h:'',bar:1},
+  ]);
 
 document.getElementById('bySkill').innerHTML = barTable(
   D.bySkill.map(s=>({...s,_bar:s.count})),
@@ -85,6 +98,18 @@ document.getElementById('sessions').innerHTML = barTable(
     {h:'tokens',fn:s=>fmt(s.tokens),num:1},
     {h:'',bar:1},
   ]);
+}
+
+window.__aiEmosApply = applyData;
+applyData(JSON.parse(document.getElementById('report-data').textContent));
+
+// modo en vivo (SSE del servidor o postMessage de VS Code); inerte en standalone
+(function(){
+  window.addEventListener('message', e => { const m = e && e.data; if (m && m.type === 'data' && m.trace) applyData(m.trace); });
+  if (window.__aiEmosLive) {
+    try { const es = new EventSource(window.__aiEmosLive); es.onmessage = ev => { try { applyData(JSON.parse(ev.data)); } catch (e) {} }; } catch (e) {}
+  }
+})();
 </script>
 </body>
 </html>

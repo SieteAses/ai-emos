@@ -122,6 +122,17 @@
   .opt{border:1px solid var(--line);border-radius:6px;padding:6px 9px;margin:4px 0;}
   .opt.chosen{border-color:#7ee0c0;box-shadow:inset 3px 0 0 #7ee0c0;}
   .opt .lab{font-weight:600;} .opt .desc{color:var(--mut);font-size:12px;} .chosen-tag{color:#7ee0c0;font-size:11px;}
+
+  /* feed EN VIVO: pila de toasts con los tramos a revisar recién aparecidos.
+     Inerte en el HTML guardado/standalone (nadie emite eventos 'finding'). */
+  #livefeed{position:fixed;left:16px;bottom:16px;z-index:70;display:flex;flex-direction:column-reverse;gap:8px;max-width:340px;}
+  .lftoast{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--c,var(--media));border-radius:10px;padding:8px 11px;box-shadow:0 4px 14px rgba(0,0,0,.45);cursor:pointer;animation:lfin .18s ease-out;}
+  .lftoast:hover{border-color:var(--acc);}
+  .lftoast .lfh{display:flex;align-items:center;gap:7px;}
+  .lftoast .lfcat{text-transform:uppercase;letter-spacing:.04em;font-size:10px;font-weight:600;color:var(--mut);}
+  .lftoast .lfx{margin-left:auto;color:var(--mut);font-size:15px;line-height:1;padding:0 3px;}
+  .lftoast .lfwhy{color:var(--tx);font-size:12px;margin-top:3px;word-break:break-word;}
+  @keyframes lfin{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
 </style>
 </head>
 <body>
@@ -140,13 +151,14 @@
   </div>
   <div id="right"><div id="detail"></div></div>
 </div>
+<div id="livefeed" aria-live="polite"></div>
 
 <script id="report-data" type="application/json">
 {"schemaVersion":1,"source":"demo","sessionId":"demo","title":"(sin datos — inyecta el JSON aquí)","steps":[],"summary":{"stepCounts":{},"tokens":{"total":0},"agents":[],"skills":[],"decisions":[],"findings":[],"findingsByCategory":{},"models":[]}}
 </script>
 
 <script>
-const DATA = JSON.parse(document.getElementById('report-data').textContent);
+let DATA = JSON.parse(document.getElementById('report-data').textContent);
 const KIND_ES = { message:'mensaje', thinking:'razonamiento', llm_call:'llamada LLM', tool_call:'herramienta', agent:'sub-agente', skill:'skill', decision:'decisión', event:'evento' };
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -348,8 +360,55 @@ document.getElementById('q').oninput=e=>{ const q=e.target.value.toLowerCase();
   document.querySelectorAll('#timeline .tlitem').forEach(it=>{ it.style.display=(!q||it.textContent.toLowerCase().includes(q))?'':'none'; });
 };
 
-indexSteps(DATA.steps);
-header(); legend(); timeline(); defaultDetail();
+function renderAll(){ REG.clear(); indexSteps(DATA.steps||[]); header(); legend(); timeline(); defaultDetail(); }
+renderAll();
+
+// ---- modo en vivo: reaplica la traza fresca sin recargar la página ----
+// VS Code envía postMessage({type:'data',trace}); el servidor expone una URL
+// SSE en window.__aiEmosLive. En el HTML guardado/standalone nada de esto
+// existe, así que el bloque es inerte.
+window.__aiEmosApply = function(d){ if(d){ DATA = d; renderAll(); } };
+
+// ---- feed en vivo: toasts de los tramos a revisar que APARECEN en vivo ----
+// El servidor (SSE) y la extensión (postMessage) emiten {findings,total} aparte
+// de la traza completa, para avisar sin re-renderizar todo el timeline.
+const SEV_C = { alta:'--alta', media:'--media', baja:'--baja' };
+// Mapea un finding a la card del timeline (best-effort; solo nivel superior).
+function lfUid(f){ if(f.path) return null; const s=(DATA.steps||[]).find(x=>x.index===f.index); return s?s._uid:null; }
+function pushFinding(f){
+  const feed=document.getElementById('livefeed'); if(!feed||!f) return;
+  const el=document.createElement('div'); el.className='lftoast';
+  el.style.setProperty('--c', css(SEV_C[f.severity]||'--media'));
+  el.innerHTML=`<div class="lfh"><span class="lfcat">${esc(f.category||'tramo')} · ${esc(f.severity||'')}</span><span class="lfx" title="descartar">×</span></div>`+
+    `<div class="lfwhy">${esc(f.why||f.label||'')}</div>`;
+  const uid=lfUid(f);
+  if(uid){ el.onclick=ev=>{ if(!ev.target.classList.contains('lfx')) select(uid); }; }
+  el.querySelector('.lfx').onclick=ev=>{ ev.stopPropagation(); el.remove(); };
+  feed.appendChild(el);
+  while(feed.children.length>6) feed.removeChild(feed.firstChild);
+  setTimeout(()=>{ el.style.transition='opacity .4s'; el.style.opacity='0'; setTimeout(()=>el.remove(),400); }, 15000);
+}
+function applyFindingEvent(p){
+  if(!p) return;
+  (p.findings||[]).forEach(pushFinding);
+  const b=document.getElementById('__avfind'); // badge del botón de la extensión
+  if(b&&p.total!=null) b.textContent='⚑ Tramos a revisar ('+p.total+')';
+}
+
+(function(){
+  window.addEventListener('message', e => {
+    const m = e && e.data; if (!m) return;
+    if (m.type === 'data' && m.trace) window.__aiEmosApply(m.trace);
+    else if (m.type === 'finding') applyFindingEvent(m);
+  });
+  if (window.__aiEmosLive) {
+    try {
+      const es = new EventSource(window.__aiEmosLive);
+      es.onmessage = ev => { try { window.__aiEmosApply(JSON.parse(ev.data)); } catch (e) {} };
+      es.addEventListener('finding', ev => { try { applyFindingEvent(JSON.parse(ev.data)); } catch (e) {} });
+    } catch (e) {}
+  }
+})();
 </script>
 </body>
 </html>
