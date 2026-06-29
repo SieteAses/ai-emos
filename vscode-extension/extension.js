@@ -15,7 +15,12 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { pathToFileURL } = require('url')
-const { buildHtml, prepareWebview, makeNonce, fmtTok } = require('./lib')
+const { buildHtml, prepareWebview, makeNonce, fmtTok, injectLang, pickLang, tr } = require('./lib')
+
+// Idioma de la UI: sigue la locale de VS Code (ES por defecto, EN si lo es).
+// El visor HTML permite además un toggle ES|EN que persiste en localStorage.
+const LANG = pickLang(vscode.env.language)
+const t = (key, ...args) => tr(LANG, key, ...args)
 
 // Resuelve el núcleo/assets: usa la copia EMPAQUETADA (bundled/) si existe
 // (.vsix self-contained), si no la del monorepo (dev con ../). Ver bundle.mjs.
@@ -89,26 +94,31 @@ async function withProgress(title, fn) {
 // Guardar. opts: { column, findingsButton, findingsCount, onOpenFindings }.
 function openReport(data, templateName, title, defaultName, opts = {}) {
   const template = fs.readFileSync(path.join(ASSETS, templateName), 'utf8')
-  const standalone = buildHtml(template, data) // HTML self-contained (lo que se guarda)
+  // HTML self-contained (lo que se guarda): fija el idioma actual por defecto.
+  const standalone = injectLang(buildHtml(template, data), LANG)
   const panel = makePanel(title, opts.column)
-  panel.webview.html = buildHtml(
-    prepareWebview(template, makeNonce(), {
-      saveButton: true,
-      findingsButton: opts.findingsButton,
-      findingsCount: opts.findingsCount,
-    }),
-    data,
+  panel.webview.html = injectLang(
+    buildHtml(
+      prepareWebview(template, makeNonce(), {
+        saveButton: true,
+        findingsButton: opts.findingsButton,
+        findingsCount: opts.findingsCount,
+        lang: LANG,
+      }),
+      data,
+    ),
+    LANG,
   )
   panel.webview.onDidReceiveMessage(async msg => {
     if (!msg) return
     if (msg.type === 'save') {
       const uri = await vscode.window.showSaveDialog({
         defaultUri: vscode.Uri.file(path.join(cwd(), defaultName)),
-        filters: { 'HTML self-contained': ['html'] },
+        filters: { [t('saveFilter')]: ['html'] },
       })
       if (uri) {
         fs.writeFileSync(uri.fsPath, standalone)
-        vscode.window.showInformationMessage('ai-emos: guardado en ' + uri.fsPath)
+        vscode.window.showInformationMessage(t('savedAt', uri.fsPath))
       }
     } else if (msg.type === 'open-findings' && opts.onOpenFindings) {
       opts.onOpenFindings()
@@ -124,14 +134,14 @@ function openTimelineReport(trace, label, timelineName, findingsName) {
   let findingsPanel = null
   const onOpenFindings = () => {
     if (findingsPanel) return findingsPanel.reveal(vscode.ViewColumn.Beside)
-    findingsPanel = openReport(trace, 'findings.html', `Tramos a revisar · ${label}`, findingsName, {
+    findingsPanel = openReport(trace, 'findings.html', t('findingsPanelTitle', label), findingsName, {
       column: vscode.ViewColumn.Beside,
     })
     findingsPanel.onDidDispose(() => {
       findingsPanel = null
     })
   }
-  const panel = openReport(trace, 'timeline.html', `Timeline · ${label}`, timelineName, {
+  const panel = openReport(trace, 'timeline.html', t('timelinePanelTitle', label), timelineName, {
     findingsButton: findingsCount > 0,
     findingsCount,
     onOpenFindings,
@@ -149,17 +159,18 @@ function notifyLiveFindings(newFindings, panel) {
   const alta = (newFindings || []).filter(f => f && f.severity === 'alta')
   if (!alta.length) return
   const head = alta[0]
-  const extra = alta.length > 1 ? ` (+${alta.length - 1} más)` : ''
-  const what = `${head.category || 'tramo'}: ${head.why || head.label || ''}`.trim()
-  vscode.window.showWarningMessage(`ai-emos · ${what}${extra}`, 'Ver tramos').then(pick => {
-    if (pick === 'Ver tramos' && panel && typeof panel.__openFindings === 'function') panel.__openFindings()
+  const extra = alta.length > 1 ? t('moreN', alta.length - 1) : ''
+  const what = `${head.category || t('segment')}: ${head.why || head.label || ''}`.trim()
+  const seeFindings = t('seeFindings')
+  vscode.window.showWarningMessage(`ai-emos · ${what}${extra}`, seeFindings).then(pick => {
+    if (pick === seeFindings && panel && typeof panel.__openFindings === 'function') panel.__openFindings()
   })
 }
 
 async function openTimelineForSession(sess) {
   const core = await loadCore()
   const { adapters, render } = core
-  await withProgress('ai-emos: parseando sesión…', async () => {
+  await withProgress(t('parsingSession'), async () => {
     const trace = render.enrich(await adapters.parse({ session: sess.file || sess.sessionId }), evalOptions(core))
     const label = sess.title || sess.sessionId
     openTimelineReport(
@@ -179,9 +190,9 @@ async function openLiveSession(sess) {
   const { adapters, render, live } = core
   const ref = sess.file || sess.sessionId
   const ev = evalOptions(core)
-  await withProgress('ai-emos: abriendo sesión en vivo…', async () => {
+  await withProgress(t('openingLive'), async () => {
     const trace = render.enrich(await adapters.parse({ session: ref }), ev)
-    const label = (sess.title || sess.sessionId) + ' · EN VIVO'
+    const label = (sess.title || sess.sessionId) + ' · ' + t('live')
     const panel = openTimelineReport(
       trace,
       label,
@@ -211,14 +222,14 @@ async function openLiveSession(sess) {
 
 async function cmdLiveSession() {
   const { adapters } = await loadCore()
-  const rows = await withProgress('ai-emos: listando sesiones…', () => adapters.listSessions({}))
+  const rows = await withProgress(t('listingSessions'), () => adapters.listSessions({}))
   if (!rows.length) {
-    vscode.window.showWarningMessage('ai-emos: no encontré sesiones en ~/.claude/projects.')
+    vscode.window.showWarningMessage(t('noSessions'))
     return
   }
   const pick = await vscode.window.showQuickPick(
     rows.slice(0, 100).map(r => ({ label: r.title || r.sessionId, description: r.sessionId, row: r })),
-    { placeHolder: 'Elige una sesión para verla EN VIVO (se refresca al cambiar el archivo)' },
+    { placeHolder: t('pickLive') },
   )
   if (!pick) return
   await openLiveSession({ sessionId: pick.row.sessionId, file: pick.row.file, title: pick.row.title })
@@ -231,14 +242,17 @@ async function cmdSessions() {
   const core = await loadCore()
   const { adapters, render, live } = core
   const ev = evalOptions(core)
-  let rows = await withProgress('ai-emos: listando sesiones…', () => adapters.listSessions({}))
+  let rows = await withProgress(t('listingSessions'), () => adapters.listSessions({}))
   if (!rows.length) {
-    vscode.window.showWarningMessage('ai-emos: no encontré sesiones en ~/.claude/projects.')
+    vscode.window.showWarningMessage(t('noSessions'))
     return
   }
   const template = fs.readFileSync(path.join(ASSETS, 'sessions.html'), 'utf8')
-  const panel = makePanel('ai-emos · Sesiones')
-  panel.webview.html = buildHtml(prepareWebview(template, makeNonce(), { saveButton: false }), { sessions: rows })
+  const panel = makePanel(t('sessionsPanelTitle'))
+  panel.webview.html = injectLang(
+    buildHtml(prepareWebview(template, makeNonce(), { saveButton: false, lang: LANG }), { sessions: rows }),
+    LANG,
+  )
 
   // Tabla EN VIVO: observa la raíz de sesiones de Claude Code (la fuente que
   // crece durante una sesión) y re-lista con debounce, empujando filas frescas.
@@ -273,7 +287,7 @@ async function cmdSessions() {
     } else if (msg.type === 'aggregate') {
       const ids = new Set(msg.ids || [])
       const subset = rows.filter(r => ids.has(r.sessionId))
-      await withProgress(`ai-emos: analizando ${subset.length} sesiones…`, async () => {
+      await withProgress(t('analyzingN', subset.length), async () => {
         const traces = []
         for (const r of subset) {
           try {
@@ -293,20 +307,20 @@ async function cmdSessions() {
 async function cmdOpenFile() {
   const picks = await vscode.window.showOpenDialog({
     canSelectMany: false,
-    openLabel: 'Visualizar',
-    filters: { 'Trazas (NDJSON/OTel/JSON/JSONL)': ['ndjson', 'json', 'jsonl'] },
+    openLabel: t('openLabel'),
+    filters: { [t('tracesFilter')]: ['ndjson', 'json', 'jsonl'] },
   })
   if (!picks || !picks.length) return
   const file = picks[0].fsPath
   const core = await loadCore()
   const { adapters, render } = core
-  await withProgress('ai-emos: parseando archivo…', async () => {
+  await withProgress(t('parsingFile'), async () => {
     try {
       const trace = render.enrich(await adapters.parse({ session: file }), evalOptions(core))
       const base = path.basename(file).replace(/\.[^.]+$/, '')
       openTimelineReport(trace, path.basename(file), base + '-timeline.html', base + '-findings.html')
     } catch (e) {
-      vscode.window.showErrorMessage('ai-emos: no pude parsear el archivo. ' + (e && e.message))
+      vscode.window.showErrorMessage(t('parseFailed', (e && e.message) || ''))
     }
   })
 }
@@ -326,7 +340,7 @@ async function handleUri(uri) {
     if (file) return open({ sessionId: path.basename(file).replace(/\.[^.]+$/, ''), file })
     if (session) return open({ sessionId: session })
   }
-  vscode.window.showWarningMessage('ai-emos: URI no reconocida → ' + uri.toString())
+  vscode.window.showWarningMessage(t('uriUnknown', uri.toString()))
 }
 
 function err(e) {

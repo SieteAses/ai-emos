@@ -1,7 +1,7 @@
 {
   "name": "ai-emos",
   "displayName": "ai-emos",
-  "description": "Observabilidad de flujos de trabajo con IA: abre el timeline interactivo de una sesión (Claude Code, NDJSON, OpenTelemetry-GenAI, Cursor, Codex) en una ventana de VS Code, con tramos a revisar y opción de guardar.",
+  "description": "%ext.description%",
   "version": "0.1.0",
   "publisher": "SieteAses",
   "license": "MIT",
@@ -23,17 +23,17 @@
     "commands": [
       {
         "command": "aiEmos.sessions",
-        "title": "Sesiones (lista + agregados)",
+        "title": "%cmd.sessions.title%",
         "category": "ai-emos"
       },
       {
         "command": "aiEmos.openFile",
-        "title": "Visualizar archivo (NDJSON/OTel/Cursor/Codex)",
+        "title": "%cmd.openFile.title%",
         "category": "ai-emos"
       },
       {
         "command": "aiEmos.liveSession",
-        "title": "Ver sesión en vivo (se refresca al cambiar)",
+        "title": "%cmd.liveSession.title%",
         "category": "ai-emos"
       }
     ],
@@ -43,27 +43,27 @@
         "aiEmos.criteria.tokens.turnBudget": {
           "type": "number",
           "default": 80000,
-          "description": "Tokens frescos (input+output) por turno por encima de los cuales el turno se marca como caro."
+          "description": "%config.tokens.turnBudget%"
         },
         "aiEmos.criteria.tokens.agentBudget": {
           "type": "number",
           "default": 150000,
-          "description": "Tokens totales de un sub-agente por encima de los cuales se marca como caro."
+          "description": "%config.tokens.agentBudget%"
         },
         "aiEmos.criteria.durationMs.tool": {
           "type": "number",
           "default": 30000,
-          "description": "Milisegundos por encima de los cuales una herramienta se marca como lenta."
+          "description": "%config.durationMs.tool%"
         },
         "aiEmos.criteria.durationMs.agent": {
           "type": "number",
           "default": 300000,
-          "description": "Milisegundos por encima de los cuales un sub-agente se marca como lento."
+          "description": "%config.durationMs.agent%"
         },
         "aiEmos.criteria.baseline.sigma": {
           "type": "number",
           "default": 2,
-          "description": "Desviaciones estándar sobre la media histórica del agente para marcarlo como atípico."
+          "description": "%config.baseline.sigma%"
         }
       }
     }
