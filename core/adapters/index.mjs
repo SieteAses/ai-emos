@@ -13,8 +13,9 @@ import ndjson from './ndjson-events.mjs'
 import otel from './otel-genai.mjs'
 import cursor from './cursor.mjs'
 import openaiCodex from './openai-codex.mjs'
+import opencode from './opencode.mjs'
 
-export const ADAPTERS = [claudeCode, ndjson, otel, cursor, openaiCodex]
+export const ADAPTERS = [claudeCode, ndjson, otel, cursor, openaiCodex, opencode]
 
 export function byName(name) {
   return ADAPTERS.find(a => a.name === name) || null
