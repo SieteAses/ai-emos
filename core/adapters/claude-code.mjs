@@ -77,6 +77,25 @@ function clip(v, maxStr = 4000, depth = 0) {
   return v
 }
 
+// El harness de Claude Code inyecta contexto en los turnos de usuario
+// (recordatorios del sistema, archivo abierto/selección del IDE, diagnósticos).
+// No es input humano: lo quitamos para que el mensaje visible sea el prompt real.
+const INJECTED_TAGS = [
+  'system-reminder',
+  'ide_opened_file',
+  'ide_closed_file',
+  'ide_selection',
+  'ide_diagnostics',
+]
+function stripInjected(text) {
+  let s = String(text == null ? '' : text)
+  for (const tag of INJECTED_TAGS) {
+    s = s.replace(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?</${tag}>`, 'gi'), '') // bloque con cierre
+    s = s.replace(new RegExp(`<${tag}\\b[^>]*/?>`, 'gi'), '') // variante suelta/sin cierre
+  }
+  return s.replace(/\n{3,}/g, '\n\n').trim()
+}
+
 // Aplana el `content` de un tool_result (string | array de bloques) a texto.
 function flattenContent(content) {
   if (content == null) return null
@@ -316,12 +335,14 @@ function parseTranscript(entries, ctx) {
       }
       if (handledToolResult) continue
 
-      // texto humano
+      // texto humano: el harness puede partir el turno en VARIOS bloques de texto
+      // (contexto inyectado del IDE + el prompt real). Hay que unir TODOS, no solo
+      // el primero, o se pierde el input real cuando va detrás del contexto.
       let text = null
       if (typeof content === 'string') text = content
       else if (Array.isArray(content)) {
-        const t = content.find(b => b && b.type === 'text')
-        if (t) text = t.text || ''
+        const texts = content.filter(b => b && b.type === 'text').map(b => b.text || '')
+        if (texts.length) text = texts.join('\n')
       }
       if (text == null) continue
       if (text.startsWith('[Request interrupted')) {
@@ -351,7 +372,9 @@ function parseTranscript(entries, ctx) {
         })
         continue
       }
-      const tr = truncate(text)
+      const cleaned = stripInjected(text)
+      if (!cleaned) continue // turno compuesto solo por contexto inyectado por el harness
+      const tr = truncate(cleaned)
       push({
         timestamp: ts,
         kind: 'message',

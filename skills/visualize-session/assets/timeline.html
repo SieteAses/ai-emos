@@ -11,16 +11,18 @@
     --message:#9aa3b2; --thinking:#5d6675; --llm_call:#6ea8fe; --tool_call:#c9a0ff;
     --agent:#ffb86b; --skill:#6ee7ff; --decision:#ff7eb6; --event:#4a5160;
     --alta:#ff6b6b; --media:#ffb86b; --baja:#7ec8ff;
-    --hh:128px;
+    --hh:64px;
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
-  header{padding:16px 22px;background:var(--panel);border-bottom:1px solid var(--line);height:var(--hh);}
-  h1{font-size:17px;margin:0 0 3px;}
-  .sub{color:var(--mut);font-size:12px;}
-  .stats{display:flex;flex-wrap:wrap;gap:10px;margin-top:9px;}
-  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 10px;}
-  .stat b{font-size:15px;} .stat span{color:var(--mut);font-size:11px;display:block;}
+  /* header delgado en una fila: título+detalles a la izquierda, stats a la derecha */
+  header{display:flex;align-items:center;gap:18px;padding:9px 20px;background:var(--panel);border-bottom:1px solid var(--line);height:var(--hh);}
+  .hgroup{min-width:0;}
+  h1{font-size:16px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sub{color:var(--mut);font-size:12px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .stats{display:flex;flex-wrap:nowrap;gap:8px;margin-left:auto;overflow-x:auto;padding-bottom:1px;}
+  .stat{flex:none;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 9px;text-align:center;}
+  .stat b{font-size:14px;} .stat span{color:var(--mut);font-size:10px;display:block;}
   .layout{display:grid;grid-template-columns:minmax(300px,34%) 1fr;}
   #left{border-right:1px solid var(--line);height:calc(100vh - var(--hh));overflow:auto;padding:14px 8px 60px;}
   #right{height:calc(100vh - var(--hh));overflow:auto;padding:18px 22px 60px;}
@@ -57,29 +59,37 @@
   .back:hover,.home:hover{border-color:var(--acc);}
   .empty{color:var(--mut);font-style:italic;}
 
-  /* detalle de sub-agente: dos paneles verticales (grafo arriba / prompts abajo) */
+  /* detalle de sub-agente: dos cards apiladas (cabecera+grafo / lista scrolleable) */
   #right.right-split{overflow:hidden;display:flex;flex-direction:column;}
   #right.right-split #detail{flex:1;display:flex;min-height:0;}
-  .agentview{flex:1;display:flex;flex-direction:column;min-height:0;}
-  .av-head{flex:none;}
-  .av-graph{flex:none;overflow-x:auto;overflow-y:hidden;}
-  .av-split{flex:none;height:6px;cursor:row-resize;background:transparent;}
-  .av-body{flex:1;min-height:0;overflow-y:auto;padding:4px 2px 48px;}
-  .av-body .d-sub:first-child{margin-top:0;}
+  /* min-width:0 deja que el flex constriña el ancho → el overflow-x interno funciona */
+  .agentview{flex:1;display:flex;flex-direction:column;min-height:0;min-width:0;gap:12px;}
 
-  /* grafo HORIZONTAL (espejo del eje vertical) */
-  .agraph-wrap{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;}
-  .htl{position:relative;display:flex;align-items:center;overflow-x:auto;padding:8px 6px;min-height:176px;}
-  .htl::before{content:'';position:absolute;left:10px;right:10px;top:50%;transform:translateY(-1px);height:2px;background:var(--line);}
+  /* card 1: título + detalles + grafo horizontal */
+  .av-graphcard{flex:none;min-width:0;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;}
+  .av-graphcard .d-h{margin-bottom:4px;} .av-graphcard .d-meta{margin-bottom:0;}
+
+  /* card 2: lista de sub-llamadas, scrolleable e independiente del grafo */
+  .av-listcard{flex:1;min-height:0;min-width:0;display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden;}
+  .av-listhead{flex:none;padding:9px 14px;border-bottom:1px solid var(--line);}
+  .av-listbody{flex:1;min-height:0;overflow-y:auto;padding:12px 14px 24px;}
+  .av-listbody .d-sub:first-child{margin-top:0;}
+
+  /* grafo HORIZONTAL (espejo del eje vertical) — scroll-x en .htl; track interno
+     ancho-de-contenido para que la línea y las cards no se recorten */
+  .htl{overflow-x:auto;overflow-y:hidden;padding-bottom:8px;}
+  .htrack{position:relative;display:flex;align-items:center;min-width:min-content;min-height:184px;padding:10px 8px;}
+  .htrack::before{content:'';position:absolute;left:10px;right:10px;top:50%;transform:translateY(-1px);height:2px;background:var(--line);}
   .hitem{position:relative;flex:0 0 158px;height:154px;}
   .hitem::after{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:11px;height:11px;border-radius:50%;background:var(--bg);border:2px solid var(--c,#888);z-index:2;}
   .hcard{position:absolute;left:8px;right:8px;background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:10px;padding:7px 10px;cursor:pointer;}
   .hcard:hover{border-color:var(--acc);}
+  .hcard.sel{border-color:var(--acc);box-shadow:0 0 0 2px var(--acc);}
   .hitem.up .hcard{bottom:calc(50% + 12px);} .hitem.down .hcard{top:calc(50% + 12px);}
 
   /* sub-llamadas */
   .sublist{display:flex;flex-direction:column;gap:6px;}
-  .subnode{border:1px solid var(--line);border-radius:8px;background:var(--panel);scroll-margin-top:10px;}
+  .subnode{border:1px solid var(--line);border-radius:8px;background:var(--panel2);scroll-margin-top:10px;}
   .subnode.flagged{box-shadow:inset 3px 0 0 var(--media);}
   .subrow{display:flex;align-items:center;gap:8px;padding:8px 11px;cursor:pointer;}
   .subrow .sl{font-weight:600;font-size:13px;}
@@ -116,8 +126,10 @@
 </head>
 <body>
 <header>
-  <h1 id="title">Timeline de sesión</h1>
-  <div class="sub" id="sub"></div>
+  <div class="hgroup">
+    <h1 id="title">Timeline de sesión</h1>
+    <div class="sub" id="sub"></div>
+  </div>
   <div class="stats" id="stats"></div>
 </header>
 <div class="layout">
@@ -140,6 +152,12 @@ const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).
 const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
 const ms = n => n==null?'':(n>=60000?(n/60000).toFixed(1)+'m':n>=1000?(n/1000).toFixed(1)+'s':n+'ms');
+// fechas en HORA LOCAL del PC (los timestamps llegan en ISO/UTC). new Date(iso)
+// los reinterpreta a la zona local, así la hora mostrada coincide con la del equipo.
+const pad2 = n => String(n).padStart(2,'0');
+const lt = iso => { if(!iso) return ''; const d=new Date(iso); return isNaN(d)?'':pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()); };
+const ldt = iso => { if(!iso) return ''; const d=new Date(iso); return isNaN(d)?'':d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())+' '+lt(iso); };
+const ldtm = iso => { const s=ldt(iso); return s?s.slice(0,16):''; };
 const role2 = r => ({user:'usuario',assistant:'asistente',system:'sistema',tool:'tool'}[r]||'');
 const kc = k => css('--'+k) || css('--event');
 const short = s => { s=String(s||''); return s.length>16?s.slice(0,15)+'…':s; };
@@ -198,7 +216,7 @@ function statsLine(st){const p=[];if(st.toolUseCount)p.push(st.toolUseCount+' to
 // ---- header / legend / timeline ----
 function header(){
   document.getElementById('title').textContent = DATA.title || ('Sesión '+(DATA.sessionId||''));
-  const s=DATA.summary||{}; const span=DATA.startedAt?`${DATA.startedAt.slice(0,16).replace('T',' ')} → ${(DATA.endedAt||'').slice(0,16).replace('T',' ')}`:'';
+  const s=DATA.summary||{}; const span=DATA.startedAt?`${ldtm(DATA.startedAt)} → ${ldtm(DATA.endedAt)}`:'';
   document.getElementById('sub').textContent=`fuente: ${DATA.source} · modelos: ${(s.models||[]).join(', ')||'n/d'} · ${span}`;
   const sc=s.stepCounts||{}, st=(b,l)=>`<div class="stat"><b>${b}</b><span>${l}</span></div>`;
   const total=Object.values(sc).reduce((a,b)=>a+b,0);
@@ -214,7 +232,7 @@ function timeline(){
     const it=document.createElement('div'); it.className='tlitem '+(i%2?'right':'left'); it.style.setProperty('--c',kc(s.kind));
     const tokN=s.kind==='agent'&&s.agent?(s.agent.totalTokens||0):(s.tokens&&s.tokens.total||0);
     const tok=tokN?`<span class="tok">${fmt(tokN)} tok</span>`:'';
-    const ts=s.timestamp?s.timestamp.slice(11,19):'';
+    const ts=lt(s.timestamp);
     const calls=s.kind==='agent'&&s.agent?`<span class="tok">${(s.agent.stats&&s.agent.stats.toolUseCount)||(s.agent.steps?s.agent.steps.length:0)} llamadas</span>`:'';
     it.innerHTML=`<div class="tlcard k-${s.kind} ${s.flags&&s.flags.length?'flagged':''}" data-uid="${s._uid}">
       <div class="tlcard-h"><span class="kdot" style="background:${kc(s.kind)}"></span><span class="ttl">${esc(s.label||KIND_ES[s.kind]||s.kind)}</span></div>
@@ -236,7 +254,7 @@ function detailHeader(s,crumbs){
   const nav = crumbs.length?`<button class="back" id="back">← volver</button>`:`<button class="home" id="home">inicio</button>`;
   const tokN=s.kind==='agent'&&s.agent?(s.agent.totalTokens||0):(s.tokens&&s.tokens.total||0);
   return `<div class="d-h"><span class="kdot" style="background:${kc(s.kind)}"></span><span class="d-ttl">${esc(s.label||s.kind)}</span>${nav}</div>
-    <div class="d-meta">${[s.role?role2(s.role):'',s.timestamp?s.timestamp.replace('T',' ').slice(0,19):'',tokN?fmt(tokN)+' tok':'',s.durationMs?ms(s.durationMs):''].filter(Boolean).join(' · ')}</div>`;
+    <div class="d-meta">${[s.role?role2(s.role):'',ldt(s.timestamp),tokN?fmt(tokN)+' tok':'',s.durationMs?ms(s.durationMs):''].filter(Boolean).join(' · ')}</div>`;
 }
 function detailFor(s,crumbs){
   const right=document.getElementById('right'), d=document.getElementById('detail');
@@ -249,16 +267,22 @@ function agentDetail(s,crumbs){
   const graph=subs.map((c,i)=>`<div class="hitem ${i%2?'down':'up'}" style="--c:${kc(c.kind)}">
       <div class="hcard" data-i="${i}">
         <div class="tlcard-h"><span class="kdot" style="background:${kc(c.kind)}"></span><span class="ttl">${esc(short(c.label||c.kind))}</span></div>
-        <div class="tlcard-m"><span>#${i+1}</span>${c.timestamp?`<span>${c.timestamp.slice(11,19)}</span>`:''}${c.tokens&&c.tokens.total?`<span class="tok">${fmt(c.tokens.total)} tok</span>`:''}</div>
+        <div class="tlcard-m"><span>#${i+1}</span>${c.timestamp?`<span>${lt(c.timestamp)}</span>`:''}${c.tokens&&c.tokens.total?`<span class="tok">${fmt(c.tokens.total)} tok</span>`:''}</div>
       </div></div>`).join('');
   const list=subs.map((c,i)=>subNode(c,i)).join('');
   const st=s.agent.stats?statsLine(s.agent.stats):'';
   return `<div class="agentview">
-    <div class="av-head">${detailHeader(s,crumbs)}</div>
-    <div class="av-graph"><div class="agraph-wrap"><div class="d-sub" style="margin-top:0">grafo de llamadas (${subs.length})${st?' · '+st:''}</div><div class="htl">${graph}</div></div></div>
-    <div class="av-body">
-      ${s.agent.prompt?`<div class="d-sub">prompt del sub-agente</div>${field('prompt',`<div class="mdwrap">${md(s.agent.prompt)}</div>`)}`:''}
-      <div class="d-sub">sub-llamadas</div><div class="sublist">${list}</div>
+    <div class="av-graphcard">
+      ${detailHeader(s,crumbs)}
+      <div class="d-sub" style="margin-top:10px">grafo de llamadas (${subs.length})${st?' · '+st:''}</div>
+      <div class="htl"><div class="htrack">${graph}</div></div>
+    </div>
+    <div class="av-listcard">
+      <div class="av-listhead"><span class="d-sub" style="margin:0">sub-llamadas (${subs.length})</span></div>
+      <div class="av-listbody">
+        ${s.agent.prompt?`<div class="d-sub" style="margin-top:0">prompt del sub-agente</div>${field('prompt',`<div class="mdwrap">${md(s.agent.prompt)}</div>`)}<div class="d-sub">llamadas</div>`:''}
+        <div class="sublist">${list}</div>
+      </div>
     </div>
   </div>`;
 }
@@ -267,17 +291,27 @@ function subNode(c,i){
   const body=(c.kind==='decision'?decisionBlock(c.decision):'')+ioBlock(c);
   const tok=c.tokens&&c.tokens.total?`<span class="tok">${fmt(c.tokens.total)}</span>`:'';
   return `<div class="subnode ${c.flags&&c.flags.length?'flagged':''}" data-i="${i}" id="sub-${i}">
-    <div class="subrow"><span class="caret">▶</span><span class="kdot" style="background:${kc(c.kind)}"></span><span class="sl">${esc(c.label||c.kind)}</span>${isAgent?'<span class="drill">abrir sub-agente →</span>':''}<span class="meta">${tok}${c.timestamp?`<span>${c.timestamp.slice(11,19)}</span>`:''}</span></div>
+    <div class="subrow"><span class="caret">▶</span><span class="kdot" style="background:${kc(c.kind)}"></span><span class="sl">${esc(c.label||c.kind)}</span>${isAgent?'<span class="drill">abrir sub-agente →</span>':''}<span class="meta">${tok}${c.timestamp?`<span>${lt(c.timestamp)}</span>`:''}</span></div>
     <div class="subbody">${body||'<div class="empty">sin I/O</div>'}</div></div>`;
 }
 function wireAgent(s,crumbs){
   const d=document.getElementById('detail');
-  d.querySelectorAll('.hcard').forEach(ch=>ch.onclick=()=>{const sn=d.querySelector('#sub-'+ch.dataset.i);if(sn){sn.classList.add('open');sn.scrollIntoView({behavior:'smooth',block:'start'});flash(sn);}});
+  // marca el nodo i en el grafo y lo centra horizontalmente (sin saltar en vertical)
+  const selGraph=i=>{
+    d.querySelectorAll('.hcard.sel').forEach(e=>e.classList.remove('sel'));
+    const hc=d.querySelector('.hcard[data-i="'+i+'"]');
+    if(hc){ hc.classList.add('sel'); hc.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'}); }
+  };
+  d.querySelectorAll('.hcard').forEach(ch=>ch.onclick=()=>{
+    const i=+ch.dataset.i; selGraph(i);
+    const sn=d.querySelector('#sub-'+i); if(sn){ sn.classList.add('open'); sn.scrollIntoView({behavior:'smooth',block:'start'}); flash(sn); }
+  });
   d.querySelectorAll('.subnode').forEach(sn=>{
     const i=+sn.dataset.i;
     sn.querySelector('.subrow').onclick=e=>{
       if(e.target.classList.contains('drill')){ detailFor(s.agent.steps[i], crumbs.concat([s])); document.getElementById('right').scrollTop=0; return; }
       sn.classList.toggle('open');
+      selGraph(i);
     };
   });
 }
