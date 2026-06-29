@@ -333,7 +333,7 @@ function defaultDetail(){
   const VIA={'skill-tool':'tool Skill','command':'slash-command','bash':'script (Bash)'};
   const sk=(s.skills||[]).map(k=>`<div class="kv"><span class="kk">${esc(k.name)}</span><span class="kvs">${k.count}×${(k.via||[]).length?' · '+k.via.map(v=>VIA[v]||v).join(' / '):''}</span></div>`).join('');
   const turnTools=ts=>{const c={};(ts||[]).forEach(l=>{const n=String(l).replace(/^tool:|^skill:|^agente:/,'');c[n]=(c[n]||0)+1;});return Object.entries(c).map(([n,k])=>k>1?`${n}×${k}`:n).join(' · ');};
-  const tn=(s.turns||[]).map(t=>{const tools=turnTools(t.tools);return `<div class="kv"><span class="kk">Turno ${t.turn}${t.model?' · '+esc(String(t.model).replace(/^claude-/,''))}:</span><span class="kvs">${t.tokens?fmt(t.tokens.total)+' tok':'—'}${tools?' · '+esc(tools):''}</span></div>`;}).join('');
+  const tn=(s.turns||[]).map(t=>{const tools=turnTools(t.tools);return `<div class="kv"><span class="kk">Turno ${t.turn}${t.model?' · '+esc(String(t.model).replace(/^claude-/,'')):''}:</span><span class="kvs">${t.tokens?fmt(t.tokens.total)+' tok':'—'}${tools?' · '+esc(tools):''}</span></div>`;}).join('');
   document.getElementById('detail').innerHTML=
     `<div class="d-h"><span class="d-ttl">${esc(DATA.title||'Resumen de la sesión')}</span></div>
      <div class="d-meta">Selecciona un paso en la línea de tiempo para ver su I/O. Las cards de <b>sub-agente</b> abren su grafo de llamadas y el detalle de cada sub-llamada. Los <b>tramos a revisar</b> están en un reporte aparte.</div>
