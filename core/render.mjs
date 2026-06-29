@@ -137,11 +137,44 @@ function collectAgents(steps, out, depth = 0) {
   }
 }
 
-function collectSkills(steps, counts) {
-  for (const s of steps) {
-    if (s.kind === 'skill' && s.label) counts[s.label] = (counts[s.label] || 0) + 1
-    if (s.kind === 'agent' && s.agent?.steps?.length) collectSkills(s.agent.steps, counts)
+// Cuenta skills por nombre y registra CÓMO se invocaron (tool Skill, slash-command
+// o ejecutando su script vía Bash). `acc` es un Map name -> {name,count,via:Set}.
+function collectSkills(steps, acc) {
+  const bump = (name, via) => {
+    if (!name) return
+    const e = acc.get(name) || { name, count: 0, via: new Set() }
+    e.count += 1
+    e.via.add(via)
+    acc.set(name, e)
   }
+  for (const s of steps) {
+    if (s.kind === 'skill' && s.label) {
+      if (s.label.startsWith('comando:')) bump(s.label.replace(/^comando:\/?/, ''), 'command')
+      else bump(s.label.replace(/^skill:/, ''), 'skill-tool')
+    }
+    if (s.skill && s.skill.name) bump(s.skill.name, s.skill.via || 'bash')
+    if (s.kind === 'agent' && s.agent?.steps?.length) collectSkills(s.agent.steps, acc)
+  }
+}
+
+// Desglose por turno (granularidad REAL de los tokens). Un turno = una respuesta
+// del LLM; el log no atribuye coste por herramienta, solo por turno. NO inventamos
+// reparto: mostramos el coste del turno y QUÉ herramientas corrió dentro.
+function collectTurns(steps) {
+  const map = new Map()
+  for (const s of steps) {
+    if (s.turn == null) continue
+    let t = map.get(s.turn)
+    if (!t) {
+      t = { turn: s.turn, tokens: null, model: s.model || null, kinds: {}, tools: [] }
+      map.set(s.turn, t)
+    }
+    if (s.tokens && !t.tokens) t.tokens = s.tokens
+    if (!t.model && s.model) t.model = s.model
+    t.kinds[s.kind] = (t.kinds[s.kind] || 0) + 1
+    if (s.kind === 'tool_call' || s.kind === 'agent' || s.kind === 'skill') t.tools.push(s.label)
+  }
+  return [...map.values()].sort((a, b) => a.turn - b.turn)
 }
 
 function collectDecisions(steps, out) {
@@ -203,10 +236,11 @@ export function enrich(trace) {
   countKinds(steps, stepCounts)
   const agents = []
   collectAgents(steps, agents)
-  const skillCounts = {}
-  collectSkills(steps, skillCounts)
+  const skillAcc = new Map()
+  collectSkills(steps, skillAcc)
   const decisions = []
   collectDecisions(steps, decisions)
+  const turns = collectTurns(steps)
 
   trace.summary = {
     stepCounts,
@@ -216,9 +250,10 @@ export function enrich(trace) {
         ? Date.parse(trace.endedAt) - Date.parse(trace.startedAt)
         : null,
     agents,
-    skills: Object.entries(skillCounts)
-      .map(([name, count]) => ({ name, count }))
+    skills: [...skillAcc.values()]
+      .map(e => ({ name: e.name, count: e.count, via: [...e.via] }))
       .sort((a, b) => b.count - a.count),
+    turns,
     decisions,
     findings, // "tramos a revisar" (mecánicos; el judge añade los de calidad)
     findingsByCategory: countBy(findings, f => f.category),

@@ -96,6 +96,20 @@ function stripInjected(text) {
   return s.replace(/\n{3,}/g, '\n\n').trim()
 }
 
+// Una skill puede ejecutarse corriendo su script vía Bash (p.ej.
+// `node skills/<nombre>/scripts/cli.mjs`). En ese caso el transcript NO deja un
+// tool `Skill`, así que la detectamos por la ruta del comando para no infra-contar
+// el uso de skills. Exigimos un intérprete (node/bash/python…) ANTES de la ruta
+// para contar solo EJECUCIONES y no comandos que solo leen el script (grep/sed/cat).
+const SKILL_PATH_RE =
+  /\b(?:node|bun|deno|tsx|ts-node|npx|pnpm|python3?|sh|bash|zsh)\b[^\n]*?skills\/([a-z0-9][\w.-]*)\/(?:scripts\/|[^\s"']*\.(?:mjs|cjs|js|ts|sh|py))/i
+function detectSkillRef(input) {
+  const cmd = input && typeof input.command === 'string' ? input.command : ''
+  if (!cmd) return null
+  const m = SKILL_PATH_RE.exec(cmd)
+  return m ? { name: m[1], via: 'bash' } : null
+}
+
 // Aplana el `content` de un tool_result (string | array de bloques) a texto.
 function flattenContent(content) {
   if (content == null) return null
@@ -296,6 +310,11 @@ function parseTranscript(entries, ctx) {
   const usageByReq = dedupeUsageByRequest(entries)
   const attached = new Set() // requestId ya con tokens asignados (1 vez por turno)
   const stepByToolUseId = new Map()
+  // turno = una respuesta del LLM (requestId). Es la granularidad REAL de los
+  // tokens: el log no atribuye coste por herramienta individual, solo por turno.
+  // Etiquetamos cada paso con su turno para poder desglosarlo honestamente.
+  const turnByReq = new Map()
+  let turnSeq = 0
   let idx = 0
 
   const push = s => {
@@ -389,8 +408,16 @@ function parseTranscript(entries, ctx) {
     // ---- ASSISTANT ----
     if (e.type === 'assistant') {
       const msg = e.message || {}
-      if (msg.model && ctx.models) ctx.models.add(msg.model)
+      const model = msg.model || null
+      if (model && ctx.models) ctx.models.add(model)
       const reqKey = e.requestId || msg.id || e.uuid
+      // número de turno estable por requestId (un turno puede partirse en varias
+      // entradas assistant que comparten requestId).
+      let turn = reqKey ? turnByReq.get(reqKey) : null
+      if (turn == null) {
+        turn = ++turnSeq
+        if (reqKey) turnByReq.set(reqKey, turn)
+      }
       // tokens del turno: se asignan UNA sola vez por requestId, y solo cuando
       // de verdad hay un paso al que colgarlos (las entradas se parten en varias
       // y algunas no producen pasos; no debemos perder los tokens por eso).
@@ -422,6 +449,8 @@ function parseTranscript(entries, ctx) {
               role: 'assistant',
               label: 'razonamiento',
               text: tr.value,
+              turn,
+              model,
               io: tr.truncated ? { truncated: true } : null,
             }),
           )
@@ -436,11 +465,15 @@ function parseTranscript(entries, ctx) {
               role: 'assistant',
               label: 'respuesta',
               text: tr.value,
+              turn,
+              model,
               io: tr.truncated ? { truncated: true } : null,
             }),
           )
         } else if (b.type === 'tool_use') {
           const step = toolUseToStep(b, ts)
+          step.turn = turn
+          step.model = model
           assign(step)
           push(step)
           if (b.id) stepByToolUseId.set(b.id, step)
@@ -508,11 +541,18 @@ function toolUseToStep(b, ts) {
   }
   // MCP: mcp__server__tool
   const mcp = /^mcp__(.+?)__(.+)$/.exec(name)
-  return {
+  const step = {
     ...base,
     kind: 'tool_call',
     label: mcp ? `mcp:${mcp[1]}/${mcp[2]}` : `tool:${name}`,
   }
+  // skill ejecutada por Bash (su script): la atribuimos sin cambiar el kind
+  // (sigue siendo una llamada Bash, pero queda contada como uso de la skill).
+  if (name === 'Bash') {
+    const sk = detectSkillRef(b.input)
+    if (sk) step.skill = sk
+  }
+  return step
 }
 
 function fillFromToolResult(step, tur, ctx) {

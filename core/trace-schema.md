@@ -51,9 +51,12 @@ Un paso es una unidad atómica del flujo. Campos comunes:
     "truncated": false             // true si input/output fue recortado
   },
   "tokens": Tokens | null,         // ver Tokens (atribuido por turno/sub-agente)
+  "turn": 7,                       // nº de turno del LLM (granularidad real de tokens)
+  "model": "claude-opus-4-8",      // modelo del turno (si la fuente lo reporta)
   "durationMs": 798778,            // si la fuente lo reporta
   "agent": Agent | null,           // solo kind=agent: sub-pasos anidados
   "decision": Decision | null,     // solo kind=decision: HITL
+  "skill": { "name", "via" },      // skill atribuida a un tool_call (p.ej. Bash que corre su script)
   "flags": ["retry", "slow"],      // heurísticas de "tramo flojo" (las pone render)
   "raw": { "ref": "…" }            // puntero opcional al dato nativo (debug)
 }
@@ -127,7 +130,8 @@ sub-agente** (no por tool individual), y la UI lo explicita.
   "stepCounts": { "tool_call": 42, "agent": 5, "decision": 3, … },
   "tokens": Tokens,                 // = Trace.tokens, por conveniencia
   "agents": [ { "name", "id", "tokens", "durationMs", "flags" }, … ],
-  "skills": [ { "name", "count" }, … ],
+  "skills": [ { "name", "count", "via": ["skill-tool"|"command"|"bash"] }, … ],
+  "turns": [ { "turn", "tokens": Tokens|null, "model", "tools": [label,…], "kinds" }, … ],
   "decisions": [ { "index", "prompt", "chosen" }, … ],
   "weakSpots": [ { "index", "flags", "why" }, … ],  // tramos "flojos"
   "models": ["…"]
