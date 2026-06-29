@@ -394,6 +394,7 @@ function stddev(arr) {
 export function aggregate(traces) {
   const agentTotals = new Map()
   const skillTotals = new Map()
+  const agentTimeline = new Map() // nombre -> [puntos por sesión] (serie temporal)
   let decisions = 0
   let findings = 0
   let tokens = 0
@@ -418,6 +419,35 @@ export function aggregate(traces) {
       r.retries += a.retries || 0
       r.sessions.add(t.sessionId)
       agentTotals.set(a.name, r)
+    }
+    // serie temporal: un punto por (agente, sesión), agregando sus invocaciones
+    // dentro de la sesión. Alimenta el drill-down "agente en el tiempo".
+    const perAgent = new Map()
+    for (const a of t.summary?.agents || []) {
+      const e = perAgent.get(a.name) || { tokens: 0, durationMs: 0, errors: 0, retries: 0, calls: 0, toolUses: 0 }
+      e.tokens += a.tokens || 0
+      e.durationMs += a.durationMs || 0
+      e.errors += a.errors || 0
+      e.retries += a.retries || 0
+      e.calls += 1
+      for (const n of Object.values(a.tools || {})) e.toolUses += n
+      perAgent.set(a.name, e)
+    }
+    for (const [name, e] of perAgent) {
+      const arr = agentTimeline.get(name) || []
+      arr.push({
+        sessionId: t.sessionId,
+        title: t.title,
+        startedAt: t.startedAt,
+        tokens: e.tokens,
+        durationMs: e.durationMs,
+        errors: e.errors,
+        retries: e.retries,
+        calls: e.calls,
+        toolUses: e.toolUses,
+        errorRate: e.toolUses ? e.errors / e.toolUses : 0,
+      })
+      agentTimeline.set(name, arr)
     }
     for (const s of t.summary?.skills || []) {
       skillTotals.set(s.name, (skillTotals.get(s.name) || 0) + s.count)
@@ -475,6 +505,13 @@ export function aggregate(traces) {
       .sort((a, b) => b.count - a.count),
     sessions: sessions.sort((a, b) => (b.endedAt || '').localeCompare(a.endedAt || '')),
     baselines,
+    // serie temporal por agente, ordenada cronológicamente
+    agentTimeline: Object.fromEntries(
+      [...agentTimeline.entries()].map(([name, pts]) => [
+        name,
+        pts.sort((a, b) => (a.startedAt || '').localeCompare(b.startedAt || '')),
+      ]),
+    ),
   }
 }
 
