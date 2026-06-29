@@ -257,7 +257,9 @@ function timeline(){
 }
 
 // ---- selección / detalle ----
+let SELECTED=null; // uid de la card seleccionada (se preserva al re-renderizar en vivo)
 function select(uid){
+  SELECTED=uid;
   document.querySelectorAll('.tlcard.active').forEach(e=>e.classList.remove('active'));
   const card=document.querySelector(`.tlcard[data-uid="${uid}"]`); if(card)card.classList.add('active');
   detailFor(REG.get(uid), []);
@@ -336,6 +338,7 @@ function flash(el){el.style.outline='2px solid '+css('--acc');setTimeout(()=>el.
 
 // ---- vista por defecto del panel derecho: overview ----
 function defaultDetail(){
+  SELECTED=null;
   document.getElementById('right').classList.remove('right-split');
   document.querySelectorAll('.tlcard.active').forEach(e=>e.classList.remove('active'));
   const s=DATA.summary||{}; const sc=s.stepCounts||{};
@@ -360,7 +363,16 @@ document.getElementById('q').oninput=e=>{ const q=e.target.value.toLowerCase();
   document.querySelectorAll('#timeline .tlitem').forEach(it=>{ it.style.display=(!q||it.textContent.toLowerCase().includes(q))?'':'none'; });
 };
 
-function renderAll(){ REG.clear(); indexSteps(DATA.steps||[]); header(); legend(); timeline(); defaultDetail(); }
+function renderAll(){
+  // preserva la selección y el scroll de la lista al re-renderizar (modo en vivo)
+  const keep=SELECTED;
+  const left=document.getElementById('left'); const leftScroll=left?left.scrollTop:0;
+  const right=document.getElementById('right'); const rightScroll=right?right.scrollTop:0;
+  REG.clear(); indexSteps(DATA.steps||[]); header(); legend(); timeline();
+  if(keep && REG.has(keep)){ select(keep); if(right) right.scrollTop=rightScroll; }
+  else defaultDetail();
+  if(left) left.scrollTop=leftScroll;
+}
 renderAll();
 
 // ---- modo en vivo: reaplica la traza fresca sin recargar la página ----
