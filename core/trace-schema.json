@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ai-emos/core/trace-schema.json",
+  "title": "Canonical Trace",
+  "type": "object",
+  "required": ["schemaVersion", "source", "sessionId", "steps"],
+  "additionalProperties": true,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "source": { "type": "string" },
+    "sessionId": { "type": "string" },
+    "title": { "type": ["string", "null"] },
+    "cwd": { "type": ["string", "null"] },
+    "startedAt": { "type": ["string", "null"] },
+    "endedAt": { "type": ["string", "null"] },
+    "models": { "type": "array", "items": { "type": "string" } },
+    "tokens": { "$ref": "#/$defs/tokens" },
+    "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+    "summary": { "type": ["object", "null"] }
+  },
+  "$defs": {
+    "tokens": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "input": { "type": ["number", "null"] },
+        "output": { "type": ["number", "null"] },
+        "cacheRead": { "type": ["number", "null"] },
+        "cacheCreate": { "type": ["number", "null"] },
+        "total": { "type": ["number", "null"] }
+      }
+    },
+    "io": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "input": {},
+        "output": {},
+        "isError": { "type": ["boolean", "null"] },
+        "truncated": { "type": ["boolean", "null"] }
+      }
+    },
+    "agent": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": ["string", "null"] },
+        "id": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "durationMs": { "type": ["number", "null"] },
+        "stats": { "type": ["object", "null"] },
+        "steps": { "type": "array", "items": { "$ref": "#/$defs/step" } }
+      }
+    },
+    "decision": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "kind": { "type": ["string", "null"], "enum": ["question", "plan", "permission", null] },
+        "prompt": { "type": ["string", "null"] },
+        "options": {
+          "type": ["array", "null"],
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": ["string", "null"] },
+              "description": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "chosen": { "type": ["array", "null"], "items": { "type": "string" } },
+        "decidedBy": { "type": ["string", "null"], "enum": ["human", "auto", null] },
+        "interrupted": { "type": ["boolean", "null"] }
+      }
+    },
+    "step": {
+      "type": "object",
+      "required": ["index", "kind"],
+      "additionalProperties": true,
+      "properties": {
+        "index": { "type": "number" },
+        "timestamp": { "type": ["string", "null"] },
+        "kind": {
+          "type": "string",
+          "enum": ["message", "thinking", "llm_call", "tool_call", "agent", "skill", "decision", "event"]
+        },
+        "label": { "type": ["string", "null"] },
+        "role": { "type": ["string", "null"], "enum": ["user", "assistant", "system", "tool", null] },
+        "text": { "type": ["string", "null"] },
+        "io": { "$ref": "#/$defs/io" },
+        "tokens": { "$ref": "#/$defs/tokens" },
+        "durationMs": { "type": ["number", "null"] },
+        "agent": { "$ref": "#/$defs/agent" },
+        "decision": { "$ref": "#/$defs/decision" },
+        "flags": { "type": ["array", "null"], "items": { "type": "string" } },
+        "raw": {}
+      }
+    }
+  }
+}

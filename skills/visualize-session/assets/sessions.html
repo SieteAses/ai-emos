@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ai-emos — sesiones</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--panel2:#1e222b;--line:#2a2f3a;--tx:#e6e8ee;--mut:#9aa3b2;--acc:#6ea8fe;--bar:#3a64c0;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
+  header{padding:16px 22px;border-bottom:1px solid var(--line);background:var(--panel);}
+  h1{font-size:16px;margin:0;} .sub{color:var(--mut);font-size:12px;margin-top:3px;}
+  .stats{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 10px;}
+  .stat b{font-size:15px;} .stat span{color:var(--mut);font-size:11px;display:block;}
+  .bar{display:flex;align-items:center;gap:12px;padding:12px 22px;flex-wrap:wrap;}
+  .bar input{flex:1;min-width:160px;background:var(--panel2);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:7px 10px;}
+  .bar label{color:var(--mut);font-size:12px;}
+  select,button{background:var(--panel2);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:6px 10px;cursor:pointer;}
+  button:hover,select:hover{border-color:var(--acc);}
+  button:disabled{opacity:.4;cursor:default;}
+  button.primary{background:var(--acc);color:#0b0d11;border-color:var(--acc);font-weight:600;}
+  main{padding:0 22px 28px;}
+  section{margin-top:8px;}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin:18px 0 8px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);}
+  th{color:var(--mut);font-weight:600;}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;}
+  tr.row{cursor:pointer;} tr.row:hover td{background:var(--panel2);}
+  .pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:11px;color:var(--mut);}
+  .ttl{font-weight:600;}
+  .pager{display:flex;align-items:center;gap:12px;padding:14px 0;color:var(--mut);font-size:12px;}
+  .empty{color:var(--mut);font-style:italic;padding:18px 0;}
+  .hint{color:var(--mut);font-size:12px;}
+  .barwrap{background:var(--panel2);border-radius:4px;overflow:hidden;} .bar-fill{height:8px;background:var(--bar);border-radius:4px;}
+  #agg{display:none;border:1px solid var(--line);border-radius:10px;padding:4px 14px 14px;background:var(--panel);}
+  #agg.on{display:block;}
+  .agg-grid{display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  .note{color:var(--mut);font-size:12px;}
+</style>
+</head>
+<body>
+<header>
+  <h1>Sesiones</h1>
+  <div class="sub" id="sub"></div>
+  <div class="stats" id="stats"></div>
+</header>
+<div class="bar">
+  <input type="search" id="q" placeholder="filtrar por título / id / fuente…" />
+  <label>por página</label>
+  <select id="pagesize"><option>10</option><option selected>50</option><option>100</option></select>
+  <button id="analyze" class="primary" title="Calcula tokens por agente/skill sobre las sesiones del filtro (parsea cada una)">📊 Analizar agregados</button>
+</div>
+<main>
+  <section id="agg"><h2 id="agg-title">Agregados</h2><div class="agg-grid">
+    <div><h2>Por agente (tokens)</h2><div id="byAgent"></div></div>
+    <div><h2>Por skill (usos)</h2><div id="bySkill"></div></div>
+  </div></section>
+
+  <section>
+    <table>
+      <thead><tr><th>título</th><th>fuente</th><th>fin</th><th class="num">tokens</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="pager">
+      <button id="prev">◀ anterior</button><span id="pginfo"></span><button id="next">siguiente ▶</button>
+      <span class="hint" style="margin-left:auto">clic en una sesión → abre su timeline en una pestaña nueva</span>
+    </div>
+  </section>
+</main>
+
+<script id="report-data" type="application/json">{"sessions":[]}</script>
+<script>
+const DATA = JSON.parse(document.getElementById('report-data').textContent);
+const api = window.__vscodeApi || null;
+const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
+const all = (DATA.sessions||[]);
+let page=0, size=50, filter='';
+
+function filtered(){
+  if(!filter) return all;
+  const q=filter.toLowerCase();
+  return all.filter(s=>((s.title||'')+' '+(s.sessionId||'')+' '+(s.source||'')).toLowerCase().includes(q));
+}
+function headerStats(){
+  const rows=filtered();
+  const tok=rows.reduce((a,s)=>a+(s.tokens||0),0);
+  document.getElementById('sub').textContent=`${all.length} sesiones${filter?` · ${rows.length} en el filtro`:''}`;
+  const st=(b,l)=>`<div class="stat"><b>${b}</b><span>${l}</span></div>`;
+  document.getElementById('stats').innerHTML=st(rows.length,'sesiones'+(filter?' (filtro)':''))+st(fmt(tok),'tokens (bruto)');
+}
+function render(){
+  headerStats();
+  const rows=filtered();
+  const pages=Math.max(1,Math.ceil(rows.length/size));
+  if(page>=pages) page=pages-1; if(page<0) page=0;
+  const start=page*size, slice=rows.slice(start,start+size);
+  const tb=document.getElementById('rows');
+  tb.innerHTML = slice.length ? slice.map(s=>`
+    <tr class="row" data-id="${esc(s.sessionId)}">
+      <td><span class="ttl">${esc(s.title||s.sessionId)}</span></td>
+      <td><span class="pill">${esc(s.source||'')}</span></td>
+      <td>${s.endedAt?esc(s.endedAt.slice(0,16).replace('T',' ')):''}</td>
+      <td class="num">${fmt(s.tokens)}</td>
+    </tr>`).join('') : '<tr><td colspan="4" class="empty">Sin sesiones.</td></tr>';
+  tb.querySelectorAll('tr.row').forEach(tr=>tr.onclick=()=>{
+    const s=all.find(x=>x.sessionId===tr.dataset.id);
+    if(api&&s) api.postMessage({type:'open', id:s.sessionId, file:s.file, source:s.source});
+  });
+  document.getElementById('pginfo').textContent = rows.length ? `${start+1}–${Math.min(start+size,rows.length)} de ${rows.length}` : '0 de 0';
+  document.getElementById('prev').disabled = page<=0;
+  document.getElementById('next').disabled = page>=pages-1;
+}
+function barTable(rows, cols){
+  const max=Math.max(1,...rows.map(r=>r._bar||0));
+  let h='<table><tbody>';
+  for(const r of rows){
+    h+='<tr>'+cols.map(c=>{
+      if(c.bar) return `<td style="width:34%"><div class="barwrap"><div class="bar-fill" style="width:${Math.round(100*(r._bar||0)/max)}%"></div></div></td>`;
+      const v=c.fn?c.fn(r):r[c.k];
+      return `<td class="${c.num?'num':''}">${v}</td>`;
+    }).join('')+'</tr>';
+  }
+  return h+'</tbody></table>';
+}
+function renderAggregate(d){
+  document.getElementById('agg').classList.add('on');
+  document.getElementById('agg-title').textContent=`Agregados · ${d.totals.sessions} sesiones · ${fmt(d.totals.tokens)} tokens · ${d.totals.findings} a revisar`;
+  document.getElementById('byAgent').innerHTML=barTable(
+    (d.byAgent||[]).map(a=>({...a,_bar:a.tokens})),
+    [{h:'agente',fn:a=>esc(a.name||'?')},{h:'llamadas',k:'calls',num:1},{h:'tokens',fn:a=>fmt(a.tokens),num:1},{h:'',bar:1}]);
+  document.getElementById('bySkill').innerHTML=barTable(
+    (d.bySkill||[]).map(s=>({...s,_bar:s.count})),
+    [{h:'skill',fn:s=>esc(s.name)},{h:'usos',k:'count',num:1},{h:'',bar:1}]);
+  const b=document.getElementById('analyze'); b.disabled=false; b.textContent='📊 Re-analizar agregados';
+}
+
+document.getElementById('pagesize').onchange=e=>{size=+e.target.value;page=0;render();};
+document.getElementById('q').oninput=e=>{filter=e.target.value;page=0;render();};
+document.getElementById('prev').onclick=()=>{page--;render();};
+document.getElementById('next').onclick=()=>{page++;render();};
+document.getElementById('analyze').onclick=()=>{
+  if(!api) return;
+  const ids=filtered().map(s=>s.sessionId);
+  const b=document.getElementById('analyze'); b.disabled=true; b.textContent=`Analizando ${ids.length}…`;
+  api.postMessage({type:'aggregate', ids});
+};
+window.addEventListener('message', e=>{ const m=e.data; if(m&&m.type==='aggregateResult') renderAggregate(m.data); });
+
+render();
+</script>
+</body>
+</html>

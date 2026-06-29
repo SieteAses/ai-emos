@@ -1,0 +1,12 @@
+{
+  "name": "ai-emos",
+  "owner": { "name": "Vicente Díaz", "email": "vicentediazg@gmail.com" },
+  "description": "Observabilidad de flujos de trabajo con IA, agnóstica al modelo/sistema.",
+  "plugins": [
+    {
+      "name": "ai-emos",
+      "source": "./",
+      "description": "Visualiza e instrumenta CÓMO trabajó la IA en una sesión (Claude Code, NDJSON, OpenTelemetry-GenAI, Cursor, Codex): timeline interactivo, tramos a revisar y agregados."
+    }
+  ]
+}

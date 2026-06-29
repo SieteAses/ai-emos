@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ai-emos — tramos a revisar</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+    --tx:#e6e8ee; --mut:#9aa3b2; --acc:#6ea8fe;
+    --alta:#ff6b6b; --media:#ffb86b; --baja:#7ec8ff;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
+  header{padding:16px 22px;background:var(--panel);border-bottom:1px solid var(--line);}
+  h1{font-size:17px;margin:0 0 3px;}
+  .sub{color:var(--mut);font-size:12px;}
+  .wrap{max-width:960px;margin:0 auto;padding:20px 22px 60px;}
+  .lefthead{display:flex;gap:8px;align-items:center;padding:0 0 14px;}
+  .lefthead input{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:6px 10px;}
+  .empty{color:var(--mut);font-style:italic;}
+
+  /* findings */
+  .finding{border:1px solid var(--line);border-left:3px solid var(--media);border-radius:6px;margin-bottom:10px;background:var(--panel);scroll-margin-top:10px;}
+  .finding.alta{border-left-color:var(--alta);} .finding.media{border-left-color:var(--media);} .finding.baja{border-left-color:var(--baja);}
+  .finding .fhead{padding:9px 12px;cursor:pointer;}
+  .finding:hover{border-color:var(--acc);}
+  .finding .cat{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);display:flex;align-items:center;gap:6px;}
+  .finding .cat .caret{transition:transform .12s;font-size:10px;}
+  .finding.open .cat .caret{transform:rotate(90deg);}
+  .finding .why{font-size:13px;margin-top:3px;}
+  .sevdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:2px;vertical-align:middle;}
+  code.path{color:var(--mut);font-size:11px;display:block;margin-top:4px;}
+  .finding .fbody{display:none;border-top:1px solid var(--line);padding:8px 12px 12px;}
+  .finding.open .fbody{display:block;}
+  .d-meta{color:var(--mut);font-size:12px;margin-bottom:8px;}
+
+  /* I/O + markdown (espejo del timeline) */
+  .iofield{background:#0b0d11;border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:6px;max-height:460px;overflow:auto;}
+  .iofield.err{border-color:#5a2b2b;}
+  .iofield > .k{color:var(--mut);text-transform:uppercase;font-size:10px;letter-spacing:.05em;display:block;margin-bottom:5px;}
+  .truncated{color:var(--media);font-size:11px;}
+  .mdwrap{word-break:break-word;}
+  .mdwrap h1,.mdwrap h2,.mdwrap h3,.mdwrap h4{margin:.5em 0 .3em;line-height:1.25;}
+  .mdwrap h1{font-size:16px;} .mdwrap h2{font-size:15px;} .mdwrap h3{font-size:14px;} .mdwrap h4{font-size:13px;color:var(--mut);}
+  .mdwrap p{margin:.4em 0;} .mdwrap ul,.mdwrap ol{margin:.3em 0;padding-left:20px;} .mdwrap li{margin:.1em 0;}
+  .mdwrap a{color:var(--acc);} .mdwrap strong{color:var(--tx);} .mdwrap em{color:var(--mut);}
+  .mdwrap blockquote{border-left:3px solid var(--line);margin:.4em 0;padding:.1em 10px;color:var(--mut);}
+  .mdwrap hr{border:0;border-top:1px solid var(--line);margin:.6em 0;}
+  .mdwrap code{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;}
+  pre.code{background:#05070a;border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:.4em 0;overflow:auto;white-space:pre-wrap;word-break:break-word;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:#d6deea;}
+  .kv{margin:5px 0;} .kv .kk{color:var(--acc);font-size:11px;font-weight:600;} .kv .kvs{margin-left:6px;} .kv .kvv{margin-top:3px;}
+  .diff{border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:.4em 0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;}
+  .diff .dl{padding:1px 10px;white-space:pre-wrap;word-break:break-word;}
+  .diff .del{background:rgba(255,107,107,.12);color:#ff9d9d;} .diff .add{background:rgba(126,224,192,.12);color:#9af3d2;}
+  .diff .hd{background:var(--panel2);color:var(--mut);font-size:10px;text-transform:uppercase;padding:2px 10px;letter-spacing:.04em;}
+  .rec{color:var(--acc);font-size:13px;margin-top:6px;}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Tramos a revisar</h1>
+  <div class="sub" id="sub"></div>
+</header>
+<div class="wrap">
+  <div class="lefthead"><input type="search" id="q" placeholder="buscar en los tramos…" /></div>
+  <div id="findings"></div>
+</div>
+
+<script id="report-data" type="application/json">
+{"schemaVersion":1,"source":"demo","sessionId":"demo","title":"(sin datos — inyecta el JSON aquí)","steps":[],"summary":{"stepCounts":{},"tokens":{"total":0},"agents":[],"skills":[],"decisions":[],"findings":[],"findingsByCategory":{},"models":[]}}
+</script>
+
+<script>
+const DATA = JSON.parse(document.getElementById('report-data').textContent);
+const KIND_ES = { message:'mensaje', thinking:'razonamiento', llm_call:'llamada LLM', tool_call:'herramienta', agent:'sub-agente', skill:'skill', decision:'decisión', event:'evento' };
+const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
+const ms = n => n==null?'':(n>=60000?(n/60000).toFixed(1)+'m':n>=1000?(n/1000).toFixed(1)+'s':n+'ms');
+const role2 = r => ({user:'usuario',assistant:'asistente',system:'sistema',tool:'tool'}[r]||'');
+
+// ---- índice de pasos por (index,label), incluye anidados de sub-agentes ----
+const STEPS = [];
+function indexSteps(steps){ (steps||[]).forEach(s=>{ STEPS.push(s); if(s.kind==='agent'&&s.agent&&s.agent.steps) indexSteps(s.agent.steps); }); }
+function findStep(x){
+  return STEPS.find(s=>s.index===x.index && (s.label||'')===(x.label||''))
+      || STEPS.find(s=>s.index===x.index) || null;
+}
+
+// ---- Markdown ligero ----
+function md(src){
+  if(src==null) return '';
+  let s=esc(String(src)); const fences=[];
+  s=s.replace(/```([\w-]*)\n?([\s\S]*?)```/g,(m,lang,code)=>{fences.push(`<pre class="code">${code.replace(/\n+$/,'')}</pre>`);return ` F${fences.length-1} `;});
+  const lines=s.split('\n'),out=[]; let para=[],list=null;
+  const fp=()=>{if(para.length){out.push('<p>'+para.join('<br>')+'</p>');para=[];}};
+  const fl=()=>{if(list){out.push(`<${list.t}>`+list.items.map(i=>'<li>'+i+'</li>').join('')+`</${list.t}>`);list=null;}};
+  for(let ln of lines){
+    if(/^ F\d+ $/.test(ln.trim())){fp();fl();out.push(ln.trim());continue;}
+    let m;
+    if((m=ln.match(/^(#{1,6})\s+(.*)$/))){fp();fl();const n=m[1].length;out.push(`<h${n}>${inline(m[2])}</h${n}>`);continue;}
+    if(/^\s*&gt;\s?/.test(ln)){fp();fl();out.push(`<blockquote>${inline(ln.replace(/^\s*&gt;\s?/,''))}</blockquote>`);continue;}
+    if(/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(ln)){fp();fl();out.push('<hr>');continue;}
+    if((m=ln.match(/^\s*[-*+]\s+(.*)$/))){fp();if(!list||list.t!=='ul'){fl();list={t:'ul',items:[]};}list.items.push(inline(m[1]));continue;}
+    if((m=ln.match(/^\s*\d+\.\s+(.*)$/))){fp();if(!list||list.t!=='ol'){fl();list={t:'ol',items:[]};}list.items.push(inline(m[1]));continue;}
+    if(ln.trim()===''){fp();fl();continue;}
+    para.push(inline(ln));
+  }
+  fp();fl();
+  return out.join('\n').replace(/ F(\d+) /g,(m,i)=>fences[+i]);
+}
+function inline(s){ return s.replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\b_([^_]+)_\b/g,'<em>$1</em>').replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noreferrer">$1</a>'); }
+
+// ---- render input/output (espejo del timeline) ----
+const CODE_KEYS=new Set(['command','code','content','file_text','sql','query','patch','script','body']);
+const MD_KEYS=new Set(['prompt','description','instructions','text','message','question']);
+function diffBlock(o,n){let h='<div class="diff">';if(o!=null){h+='<div class="hd">antes</div>';String(o).split('\n').forEach(l=>h+=`<div class="dl del">- ${esc(l)}</div>`);}if(n!=null){h+='<div class="hd">después</div>';String(n).split('\n').forEach(l=>h+=`<div class="dl add">+ ${esc(l)}</div>`);}return h+'</div>';}
+function renderObj(obj){
+  if(Array.isArray(obj)) return `<pre class="code">${esc(JSON.stringify(obj,null,2))}</pre>`;
+  let h='';
+  for(const k of Object.keys(obj)){
+    const v=obj[k]; if(v==null) continue; if(k==='old_string'||k==='new_string') continue;
+    if(typeof v==='object') h+=`<div class="kv"><span class="kk">${esc(k)}</span><div class="kvv">${renderObj(v)}</div></div>`;
+    else if(CODE_KEYS.has(k)) h+=`<div class="kv"><span class="kk">${esc(k)}</span><div class="kvv"><pre class="code">${esc(String(v))}</pre></div></div>`;
+    else if(MD_KEYS.has(k)) h+=`<div class="kv"><span class="kk">${esc(k)}</span><div class="kvv mdwrap">${md(v)}</div></div>`;
+    else h+=`<div class="kv"><span class="kk">${esc(k)}</span><span class="kvs">${esc(String(v))}</span></div>`;
+  }
+  if(obj.old_string!=null||obj.new_string!=null) h+=diffBlock(obj.old_string,obj.new_string);
+  return h;
+}
+function renderVal(v){ if(v==null)return''; if(typeof v==='object')return renderObj(v); const s=String(v).trim(); if((s.startsWith('{')&&s.endsWith('}'))||(s.startsWith('[')&&s.endsWith(']'))){try{return renderObj(JSON.parse(s));}catch(e){}} return `<div class="mdwrap">${md(v)}</div>`; }
+function field(l,inner,err){return `<div class="iofield ${err?'err':''}"><span class="k">${esc(l)}</span>${inner}</div>`;}
+function ioBlock(s){let h='';if(s.text)h+=field('texto',`<div class="mdwrap">${md(s.text)}</div>`);if(s.io){if(s.io.input!=null)h+=field('input',renderVal(s.io.input));if(s.io.output!=null)h+=field('output'+(s.io.isError?' · ERROR':''),renderVal(s.io.output),s.io.isError);if(s.io.truncated)h+='<div class="truncated">… (recortado)</div>';}return h;}
+function decisionBlock(d){if(!d)return'';let h=field('pregunta',`<div class="mdwrap">${md(d.prompt||'')}</div>`);const chosen=(d.chosen||[]).map(String);let opts='';(d.options||[]).forEach(o=>{const c=chosen.some(x=>x===o.label||(o.label&&x.includes(o.label)));opts+=`<div class="opt ${c?'chosen':''}"><div class="lab">${esc(o.label)}${c?' ✓ elegida':''}</div>${o.description?`<div class="desc">${esc(o.description)}</div>`:''}</div>`;});if(opts)h+=opts;if(chosen.length)h+=field('decisión del usuario',`<div class="mdwrap">${md(chosen.join('\n\n— '))}</div>`);return h;}
+
+// ---- detalle de un tramo (autocontenido) ----
+function findingBody(x){
+  const s=findStep(x);
+  let h='';
+  if(s){
+    const meta=[s.role?role2(s.role):'',s.timestamp?s.timestamp.replace('T',' ').slice(0,19):'',(s.tokens&&s.tokens.total)?fmt(s.tokens.total)+' tok':'',s.durationMs?ms(s.durationMs):''].filter(Boolean).join(' · ');
+    if(meta) h+=`<div class="d-meta">${esc(meta)}</div>`;
+    const body=(s.kind==='decision'?decisionBlock(s.decision):'')+ioBlock(s);
+    h+= body || '<div class="empty">sin I/O</div>';
+  } else {
+    h+='<div class="empty">paso no encontrado en la traza.</div>';
+  }
+  if(x.recommendation) h+=`<div class="rec">→ ${esc(x.recommendation)}</div>`;
+  return h;
+}
+
+// ---- render lista de tramos ----
+function header(){
+  const f=(DATA.summary&&DATA.summary.findings)||[];
+  document.getElementById('title').textContent=`Tramos a revisar (${f.length})`;
+  const span=DATA.startedAt?`${DATA.startedAt.slice(0,16).replace('T',' ')} → ${(DATA.endedAt||'').slice(0,16).replace('T',' ')}`:'';
+  document.getElementById('sub').textContent=`${DATA.title||('Sesión '+(DATA.sessionId||''))} · fuente: ${DATA.source}${span?' · '+span:''}`;
+}
+function renderFindings(){
+  const f=(DATA.summary&&DATA.summary.findings)||[];
+  const order={alta:0,media:1,baja:2};
+  const sorted=f.slice().sort((a,b)=>(order[a.severity]??3)-(order[b.severity]??3));
+  const box=document.getElementById('findings');
+  box.innerHTML = sorted.length ? sorted.map((x,n)=>`
+    <div class="finding ${esc(x.severity)}" data-fi="${n}">
+      <div class="fhead">
+        <div class="cat"><span class="caret">▶</span><span class="sevdot" style="background:var(--${esc(x.severity)})"></span>${esc(x.category)} · ${esc(x.severity)}${x.source==='judge'?' · calidad/LLM':''}</div>
+        <div class="why">${esc(x.why)}</div>
+        <code class="path">${esc(x.path||'')}${esc(x.label||'')}</code>
+      </div>
+      <div class="fbody">${findingBody(x)}</div>
+    </div>`).join('') : '<div class="empty">Sin tramos marcados.</div>';
+  box.querySelectorAll('.finding').forEach(el=>{
+    el.querySelector('.fhead').onclick=()=>el.classList.toggle('open');
+  });
+}
+
+// ---- búsqueda ----
+document.getElementById('q').oninput=e=>{ const q=e.target.value.toLowerCase();
+  document.querySelectorAll('#findings .finding').forEach(el=>{ el.style.display=(!q||el.textContent.toLowerCase().includes(q))?'':'none'; });
+};
+
+indexSteps(DATA.steps);
+header(); renderFindings();
+</script>
+</body>
+</html>

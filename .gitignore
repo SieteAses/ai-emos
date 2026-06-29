@@ -1,0 +1,6 @@
+node_modules/
+vscode-extension/bundled/
+*.vsix
+session-timeline-*.html
+*-timeline-*.html
+.DS_Store

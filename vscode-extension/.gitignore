@@ -1,0 +1,3 @@
+bundled/
+*.vsix
+node_modules/

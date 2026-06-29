@@ -1,0 +1,36 @@
+{
+  "name": "ai-emos",
+  "displayName": "ai-emos",
+  "description": "Observabilidad de flujos de trabajo con IA: abre el timeline interactivo de una sesión (Claude Code, NDJSON, OpenTelemetry-GenAI, Cursor, Codex) en una ventana de VS Code, con tramos a revisar y opción de guardar.",
+  "version": "0.1.0",
+  "publisher": "SieteAses",
+  "license": "MIT",
+  "author": { "name": "Vicente Díaz", "email": "vicentediazg@gmail.com" },
+  "repository": { "type": "git", "url": "https://github.com/SieteAses/ai-emos.git", "directory": "vscode-extension" },
+  "bugs": { "url": "https://github.com/SieteAses/ai-emos/issues" },
+  "homepage": "https://github.com/SieteAses/ai-emos#readme",
+  "galleryBanner": { "color": "#0b0d11", "theme": "dark" },
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Visualization", "Other"],
+  "keywords": ["observability", "agents", "timeline", "claude-code", "opentelemetry", "ia"],
+  "main": "./extension.js",
+  "activationEvents": ["onUri"],
+  "scripts": {
+    "bundle": "node bundle.mjs",
+    "vscode:prepublish": "node bundle.mjs"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiEmos.sessions",
+        "title": "Sesiones (lista + agregados)",
+        "category": "ai-emos"
+      },
+      {
+        "command": "aiEmos.openFile",
+        "title": "Visualizar archivo (NDJSON/OTel/Cursor/Codex)",
+        "category": "ai-emos"
+      }
+    ]
+  }
+}

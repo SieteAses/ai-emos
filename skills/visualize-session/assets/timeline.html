@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ai-emos — timeline de sesión</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a;
+    --tx:#e6e8ee; --mut:#9aa3b2; --acc:#6ea8fe;
+    --message:#9aa3b2; --thinking:#5d6675; --llm_call:#6ea8fe; --tool_call:#c9a0ff;
+    --agent:#ffb86b; --skill:#6ee7ff; --decision:#ff7eb6; --event:#4a5160;
+    --alta:#ff6b6b; --media:#ffb86b; --baja:#7ec8ff;
+    --hh:128px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
+  header{padding:16px 22px;background:var(--panel);border-bottom:1px solid var(--line);height:var(--hh);}
+  h1{font-size:17px;margin:0 0 3px;}
+  .sub{color:var(--mut);font-size:12px;}
+  .stats{display:flex;flex-wrap:wrap;gap:10px;margin-top:9px;}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 10px;}
+  .stat b{font-size:15px;} .stat span{color:var(--mut);font-size:11px;display:block;}
+  .layout{display:grid;grid-template-columns:minmax(300px,34%) 1fr;}
+  #left{border-right:1px solid var(--line);height:calc(100vh - var(--hh));overflow:auto;padding:14px 8px 60px;}
+  #right{height:calc(100vh - var(--hh));overflow:auto;padding:18px 22px 60px;}
+  .lefthead{display:flex;gap:8px;align-items:center;padding:0 10px 10px;}
+  .lefthead input{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:6px 10px;}
+  .legend{display:flex;flex-wrap:wrap;gap:6px;padding:0 10px 12px;}
+  .lg{font-size:11px;color:var(--mut);display:flex;align-items:center;gap:4px;}
+  .lg .kdot{width:8px;height:8px;}
+
+  /* eje + cards zigzag */
+  .tl{position:relative;}
+  .tl::before{content:'';position:absolute;left:50%;transform:translateX(-1px);top:0;bottom:0;width:2px;background:var(--line);}
+  .tlitem{position:relative;width:50%;padding:7px 16px;}
+  .tlitem.left{left:0;}
+  .tlitem.right{left:50%;}
+  .tlitem::after{content:'';position:absolute;top:15px;width:11px;height:11px;border-radius:50%;background:var(--bg);border:2px solid var(--c,#888);z-index:1;}
+  .tlitem.left::after{right:-6px;} .tlitem.right::after{left:-6px;}
+  .tlcard{background:var(--panel);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:10px;padding:8px 11px;cursor:pointer;}
+  .tlcard:hover{border-color:var(--acc);}
+  .tlcard.active{outline:2px solid var(--acc);}
+  .tlcard.flagged{box-shadow:inset 0 0 0 1px var(--media);}
+  .tlcard-h{display:flex;align-items:center;gap:7px;}
+  .tlcard-h .ttl{font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .tlcard-m{color:var(--mut);font-size:11px;margin-top:4px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+  .kdot{width:9px;height:9px;border-radius:50%;flex:none;}
+  .tok{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:0 6px;font-size:10px;color:var(--mut);}
+
+  /* detalle */
+  .d-h{display:flex;align-items:center;gap:9px;margin-bottom:4px;}
+  .d-ttl{font-size:16px;font-weight:600;}
+  .d-meta{color:var(--mut);font-size:12px;margin-bottom:12px;}
+  .d-sub{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin:16px 0 7px;}
+  .back,.home{margin-left:auto;background:var(--panel2);border:1px solid var(--line);color:var(--tx);border-radius:7px;padding:4px 10px;cursor:pointer;font-size:12px;}
+  .back:hover,.home:hover{border-color:var(--acc);}
+  .empty{color:var(--mut);font-style:italic;}
+
+  /* detalle de sub-agente: dos paneles verticales (grafo arriba / prompts abajo) */
+  #right.right-split{overflow:hidden;display:flex;flex-direction:column;}
+  #right.right-split #detail{flex:1;display:flex;min-height:0;}
+  .agentview{flex:1;display:flex;flex-direction:column;min-height:0;}
+  .av-head{flex:none;}
+  .av-graph{flex:none;overflow-x:auto;overflow-y:hidden;}
+  .av-split{flex:none;height:6px;cursor:row-resize;background:transparent;}
+  .av-body{flex:1;min-height:0;overflow-y:auto;padding:4px 2px 48px;}
+  .av-body .d-sub:first-child{margin-top:0;}
+
+  /* grafo HORIZONTAL (espejo del eje vertical) */
+  .agraph-wrap{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 12px;}
+  .htl{position:relative;display:flex;align-items:center;overflow-x:auto;padding:8px 6px;min-height:176px;}
+  .htl::before{content:'';position:absolute;left:10px;right:10px;top:50%;transform:translateY(-1px);height:2px;background:var(--line);}
+  .hitem{position:relative;flex:0 0 158px;height:154px;}
+  .hitem::after{content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:11px;height:11px;border-radius:50%;background:var(--bg);border:2px solid var(--c,#888);z-index:2;}
+  .hcard{position:absolute;left:8px;right:8px;background:var(--panel2);border:1px solid var(--line);border-left:4px solid var(--c);border-radius:10px;padding:7px 10px;cursor:pointer;}
+  .hcard:hover{border-color:var(--acc);}
+  .hitem.up .hcard{bottom:calc(50% + 12px);} .hitem.down .hcard{top:calc(50% + 12px);}
+
+  /* sub-llamadas */
+  .sublist{display:flex;flex-direction:column;gap:6px;}
+  .subnode{border:1px solid var(--line);border-radius:8px;background:var(--panel);scroll-margin-top:10px;}
+  .subnode.flagged{box-shadow:inset 3px 0 0 var(--media);}
+  .subrow{display:flex;align-items:center;gap:8px;padding:8px 11px;cursor:pointer;}
+  .subrow .sl{font-weight:600;font-size:13px;}
+  .subrow .meta{margin-left:auto;color:var(--mut);font-size:11px;display:flex;gap:8px;align-items:center;}
+  .subrow .drill{color:var(--agent);font-size:11px;border:1px solid var(--line);border-radius:6px;padding:1px 7px;}
+  .subbody{display:none;padding:0 11px 10px;}
+  .subnode.open .subbody{display:block;}
+  .caret{color:var(--mut);transition:transform .12s;font-size:10px;}
+  .subnode.open .caret{transform:rotate(90deg);}
+
+  /* I/O + markdown */
+  .iofield{background:#0b0d11;border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin-top:6px;max-height:460px;overflow:auto;}
+  .iofield.err{border-color:#5a2b2b;}
+  .iofield > .k{color:var(--mut);text-transform:uppercase;font-size:10px;letter-spacing:.05em;display:block;margin-bottom:5px;}
+  .truncated{color:var(--media);font-size:11px;}
+  .mdwrap{word-break:break-word;}
+  .mdwrap h1,.mdwrap h2,.mdwrap h3,.mdwrap h4{margin:.5em 0 .3em;line-height:1.25;}
+  .mdwrap h1{font-size:16px;} .mdwrap h2{font-size:15px;} .mdwrap h3{font-size:14px;} .mdwrap h4{font-size:13px;color:var(--mut);}
+  .mdwrap p{margin:.4em 0;} .mdwrap ul,.mdwrap ol{margin:.3em 0;padding-left:20px;} .mdwrap li{margin:.1em 0;}
+  .mdwrap a{color:var(--acc);} .mdwrap strong{color:var(--tx);} .mdwrap em{color:var(--mut);}
+  .mdwrap blockquote{border-left:3px solid var(--line);margin:.4em 0;padding:.1em 10px;color:var(--mut);}
+  .mdwrap hr{border:0;border-top:1px solid var(--line);margin:.6em 0;}
+  .mdwrap code{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;}
+  pre.code{background:#05070a;border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:.4em 0;overflow:auto;white-space:pre-wrap;word-break:break-word;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:#d6deea;}
+  .kv{margin:5px 0;} .kv .kk{color:var(--acc);font-size:11px;font-weight:600;} .kv .kvs{margin-left:6px;} .kv .kvv{margin-top:3px;}
+  .diff{border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:.4em 0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;}
+  .diff .dl{padding:1px 10px;white-space:pre-wrap;word-break:break-word;}
+  .diff .del{background:rgba(255,107,107,.12);color:#ff9d9d;} .diff .add{background:rgba(126,224,192,.12);color:#9af3d2;}
+  .diff .hd{background:var(--panel2);color:var(--mut);font-size:10px;text-transform:uppercase;padding:2px 10px;letter-spacing:.04em;}
+  .opt{border:1px solid var(--line);border-radius:6px;padding:6px 9px;margin:4px 0;}
+  .opt.chosen{border-color:#7ee0c0;box-shadow:inset 3px 0 0 #7ee0c0;}
+  .opt .lab{font-weight:600;} .opt .desc{color:var(--mut);font-size:12px;} .chosen-tag{color:#7ee0c0;font-size:11px;}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Timeline de sesión</h1>
+  <div class="sub" id="sub"></div>
+  <div class="stats" id="stats"></div>
+</header>
+<div class="layout">
+  <div id="left">
+    <div class="lefthead"><input type="search" id="q" placeholder="buscar en la línea de tiempo…" /></div>
+    <div class="legend" id="legend"></div>
+    <div class="tl" id="timeline"></div>
+  </div>
+  <div id="right"><div id="detail"></div></div>
+</div>
+
+<script id="report-data" type="application/json">
+{"schemaVersion":1,"source":"demo","sessionId":"demo","title":"(sin datos — inyecta el JSON aquí)","steps":[],"summary":{"stepCounts":{},"tokens":{"total":0},"agents":[],"skills":[],"decisions":[],"findings":[],"findingsByCategory":{},"models":[]}}
+</script>
+
+<script>
+const DATA = JSON.parse(document.getElementById('report-data').textContent);
+const KIND_ES = { message:'mensaje', thinking:'razonamiento', llm_call:'llamada LLM', tool_call:'herramienta', agent:'sub-agente', skill:'skill', decision:'decisión', event:'evento' };
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
+const ms = n => n==null?'':(n>=60000?(n/60000).toFixed(1)+'m':n>=1000?(n/1000).toFixed(1)+'s':n+'ms');
+const role2 = r => ({user:'usuario',assistant:'asistente',system:'sistema',tool:'tool'}[r]||'');
+const kc = k => css('--'+k) || css('--event');
+const short = s => { s=String(s||''); return s.length>16?s.slice(0,15)+'…':s; };
+
+// ---- registro de pasos (uid jerárquico) ----
+const REG = new Map();
+function indexSteps(steps, prefix=''){ (steps||[]).forEach((s,i)=>{ const uid=prefix+i; s._uid=uid; REG.set(uid,s); if(s.kind==='agent'&&s.agent&&s.agent.steps) indexSteps(s.agent.steps, uid+'.'); }); }
+
+// ---- Markdown ligero ----
+function md(src){
+  if(src==null) return '';
+  let s=esc(String(src)); const fences=[];
+  s=s.replace(/```([\w-]*)\n?([\s\S]*?)```/g,(m,lang,code)=>{fences.push(`<pre class="code">${code.replace(/\n+$/,'')}</pre>`);return ` F${fences.length-1} `;});
+  const lines=s.split('\n'),out=[]; let para=[],list=null;
+  const fp=()=>{if(para.length){out.push('<p>'+para.join('<br>')+'</p>');para=[];}};
+  const fl=()=>{if(list){out.push(`<${list.t}>`+list.items.map(i=>'<li>'+i+'</li>').join('')+`</${list.t}>`);list=null;}};
+  for(let ln of lines){
+    if(/^ F\d+ $/.test(ln.trim())){fp();fl();out.push(ln.trim());continue;}
+    let m;
+    if((m=ln.match(/^(#{1,6})\s+(.*)$/))){fp();fl();const n=m[1].length;out.push(`<h${n}>${inline(m[2])}</h${n}>`);continue;}
+    if(/^\s*&gt;\s?/.test(ln)){fp();fl();out.push(`<blockquote>${inline(ln.replace(/^\s*&gt;\s?/,''))}</blockquote>`);continue;}
+    if(/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(ln)){fp();fl();out.push('<hr>');continue;}
+    if((m=ln.match(/^\s*[-*+]\s+(.*)$/))){fp();if(!list||list.t!=='ul'){fl();list={t:'ul',items:[]};}list.items.push(inline(m[1]));continue;}
+    if((m=ln.match(/^\s*\d+\.\s+(.*)$/))){fp();if(!list||list.t!=='ol'){fl();list={t:'ol',items:[]};}list.items.push(inline(m[1]));continue;}
+    if(ln.trim()===''){fp();fl();continue;}
+    para.push(inline(ln));
+  }
+  fp();fl();
+  return out.join('\n').replace(/ F(\d+) /g,(m,i)=>fences[+i]);
+}
+function inline(s){ return s.replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>').replace(/\b_([^_]+)_\b/g,'<em>$1</em>').replace(/\[([^\]]+)\]\(([^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noreferrer">$1</a>'); }
+
+// ---- render input/output ----
+const CODE_KEYS=new Set(['command','code','content','file_text','sql','query','patch','script','body']);
+const MD_KEYS=new Set(['prompt','description','instructions','text','message','question']);
+function diffBlock(o,n){let h='<div class="diff">';if(o!=null){h+='<div class="hd">antes</div>';String(o).split('\n').forEach(l=>h+=`<div class="dl del">- ${esc(l)}</div>`);}if(n!=null){h+='<div class="hd">después</div>';String(n).split('\n').forEach(l=>h+=`<div class="dl add">+ ${esc(l)}</div>`);}return h+'</div>';}
+function renderObj(obj){
+  if(Array.isArray(obj)) return `<pre class="code">${esc(JSON.stringify(obj,null,2))}</pre>`;
+  let h='';
+  for(const k of Object.keys(obj)){
+    const v=obj[k]; if(v==null) continue; if(k==='old_string'||k==='new_string') continue;
+    if(typeof v==='object') h+=`<div class="kv"><span class="kk">${esc(k)}</span><div class="kvv">${renderObj(v)}</div></div>`;
+    else if(CODE_KEYS.has(k)) h+=`<div class="kv"><span class="kk">${esc(k)}</span><div class="kvv"><pre class="code">${esc(String(v))}</pre></div></div>`;
+    else if(MD_KEYS.has(k)) h+=`<div class="kv"><span class="kk">${esc(k)}</span><div class="kvv mdwrap">${md(v)}</div></div>`;
+    else h+=`<div class="kv"><span class="kk">${esc(k)}</span><span class="kvs">${esc(String(v))}</span></div>`;
+  }
+  if(obj.old_string!=null||obj.new_string!=null) h+=diffBlock(obj.old_string,obj.new_string);
+  return h;
+}
+function renderVal(v){ if(v==null)return''; if(typeof v==='object')return renderObj(v); const s=String(v).trim(); if((s.startsWith('{')&&s.endsWith('}'))||(s.startsWith('[')&&s.endsWith(']'))){try{return renderObj(JSON.parse(s));}catch(e){}} return `<div class="mdwrap">${md(v)}</div>`; }
+function field(l,inner,err){return `<div class="iofield ${err?'err':''}"><span class="k">${esc(l)}</span>${inner}</div>`;}
+function ioBlock(s){let h='';if(s.text)h+=field('texto',`<div class="mdwrap">${md(s.text)}</div>`);if(s.io){if(s.io.input!=null)h+=field('input',renderVal(s.io.input));if(s.io.output!=null)h+=field('output'+(s.io.isError?' · ERROR':''),renderVal(s.io.output),s.io.isError);if(s.io.truncated)h+='<div class="truncated">… (recortado)</div>';}return h;}
+function decisionBlock(d){if(!d)return'';let h=field('pregunta',`<div class="mdwrap">${md(d.prompt||'')}</div>`);const chosen=(d.chosen||[]).map(String);let opts='';(d.options||[]).forEach(o=>{const c=chosen.some(x=>x===o.label||(o.label&&x.includes(o.label)));opts+=`<div class="opt ${c?'chosen':''}"><div class="lab">${esc(o.label)}${c?' <span class="chosen-tag">✓ elegida</span>':''}</div>${o.description?`<div class="desc">${esc(o.description)}</div>`:''}</div>`;});if(opts)h+=opts;if(chosen.length)h+=field('decisión del usuario',`<div class="mdwrap">${md(chosen.join('\n\n— '))}</div>`);return h;}
+function statsLine(st){const p=[];if(st.toolUseCount)p.push(st.toolUseCount+' tools');if(st.readCount)p.push(st.readCount+' reads');if(st.bashCount)p.push(st.bashCount+' bash');if(st.editFileCount)p.push(st.editFileCount+' edits');if(st.linesAdded||st.linesRemoved)p.push(`+${st.linesAdded||0}/-${st.linesRemoved||0}`);return p.join(' · ');}
+
+// ---- header / legend / timeline ----
+function header(){
+  document.getElementById('title').textContent = DATA.title || ('Sesión '+(DATA.sessionId||''));
+  const s=DATA.summary||{}; const span=DATA.startedAt?`${DATA.startedAt.slice(0,16).replace('T',' ')} → ${(DATA.endedAt||'').slice(0,16).replace('T',' ')}`:'';
+  document.getElementById('sub').textContent=`fuente: ${DATA.source} · modelos: ${(s.models||[]).join(', ')||'n/d'} · ${span}`;
+  const sc=s.stepCounts||{}, st=(b,l)=>`<div class="stat"><b>${b}</b><span>${l}</span></div>`;
+  const total=Object.values(sc).reduce((a,b)=>a+b,0);
+  document.getElementById('stats').innerHTML=st(fmt(total),'pasos')+st(fmt((s.tokens||{}).total||0),'tokens')+st(sc.agent||0,'sub-agentes')+st(sc.tool_call||0,'herramientas')+st((s.decisions||[]).length,'decisiones')+st((s.findings||[]).length,'a revisar')+st(ms(s.durationMs)||'n/d','duración');
+}
+function legend(){
+  const sc=(DATA.summary&&DATA.summary.stepCounts)||{};
+  document.getElementById('legend').innerHTML=Object.keys(sc).map(k=>`<span class="lg"><span class="kdot" style="background:${kc(k)}"></span>${KIND_ES[k]||k}</span>`).join('');
+}
+function timeline(){
+  const tl=document.getElementById('timeline'); tl.innerHTML='';
+  (DATA.steps||[]).forEach((s,i)=>{
+    const it=document.createElement('div'); it.className='tlitem '+(i%2?'right':'left'); it.style.setProperty('--c',kc(s.kind));
+    const tokN=s.kind==='agent'&&s.agent?(s.agent.totalTokens||0):(s.tokens&&s.tokens.total||0);
+    const tok=tokN?`<span class="tok">${fmt(tokN)} tok</span>`:'';
+    const ts=s.timestamp?s.timestamp.slice(11,19):'';
+    const calls=s.kind==='agent'&&s.agent?`<span class="tok">${(s.agent.stats&&s.agent.stats.toolUseCount)||(s.agent.steps?s.agent.steps.length:0)} llamadas</span>`:'';
+    it.innerHTML=`<div class="tlcard k-${s.kind} ${s.flags&&s.flags.length?'flagged':''}" data-uid="${s._uid}">
+      <div class="tlcard-h"><span class="kdot" style="background:${kc(s.kind)}"></span><span class="ttl">${esc(s.label||KIND_ES[s.kind]||s.kind)}</span></div>
+      <div class="tlcard-m">${ts?`<span>${ts}</span>`:''}${s.role?`<span>${role2(s.role)}</span>`:''}${tok}${calls}</div>
+    </div>`;
+    it.querySelector('.tlcard').onclick=()=>select(s._uid);
+    tl.appendChild(it);
+  });
+}
+
+// ---- selección / detalle ----
+function select(uid){
+  document.querySelectorAll('.tlcard.active').forEach(e=>e.classList.remove('active'));
+  const card=document.querySelector(`.tlcard[data-uid="${uid}"]`); if(card)card.classList.add('active');
+  detailFor(REG.get(uid), []);
+  document.getElementById('right').scrollTop=0;
+}
+function detailHeader(s,crumbs){
+  const nav = crumbs.length?`<button class="back" id="back">← volver</button>`:`<button class="home" id="home">inicio</button>`;
+  const tokN=s.kind==='agent'&&s.agent?(s.agent.totalTokens||0):(s.tokens&&s.tokens.total||0);
+  return `<div class="d-h"><span class="kdot" style="background:${kc(s.kind)}"></span><span class="d-ttl">${esc(s.label||s.kind)}</span>${nav}</div>
+    <div class="d-meta">${[s.role?role2(s.role):'',s.timestamp?s.timestamp.replace('T',' ').slice(0,19):'',tokN?fmt(tokN)+' tok':'',s.durationMs?ms(s.durationMs):''].filter(Boolean).join(' · ')}</div>`;
+}
+function detailFor(s,crumbs){
+  const right=document.getElementById('right'), d=document.getElementById('detail');
+  if(s.kind==='agent'&&s.agent&&s.agent.steps&&s.agent.steps.length){ right.classList.add('right-split'); d.innerHTML=agentDetail(s,crumbs); wireAgent(s,crumbs); }
+  else { right.classList.remove('right-split'); let body=(s.kind==='decision'?decisionBlock(s.decision):'')+ioBlock(s); d.innerHTML=detailHeader(s,crumbs)+(body||'<div class="empty">sin I/O</div>'); }
+  wireNav(crumbs);
+}
+function agentDetail(s,crumbs){
+  const subs=s.agent.steps;
+  const graph=subs.map((c,i)=>`<div class="hitem ${i%2?'down':'up'}" style="--c:${kc(c.kind)}">
+      <div class="hcard" data-i="${i}">
+        <div class="tlcard-h"><span class="kdot" style="background:${kc(c.kind)}"></span><span class="ttl">${esc(short(c.label||c.kind))}</span></div>
+        <div class="tlcard-m"><span>#${i+1}</span>${c.timestamp?`<span>${c.timestamp.slice(11,19)}</span>`:''}${c.tokens&&c.tokens.total?`<span class="tok">${fmt(c.tokens.total)} tok</span>`:''}</div>
+      </div></div>`).join('');
+  const list=subs.map((c,i)=>subNode(c,i)).join('');
+  const st=s.agent.stats?statsLine(s.agent.stats):'';
+  return `<div class="agentview">
+    <div class="av-head">${detailHeader(s,crumbs)}</div>
+    <div class="av-graph"><div class="agraph-wrap"><div class="d-sub" style="margin-top:0">grafo de llamadas (${subs.length})${st?' · '+st:''}</div><div class="htl">${graph}</div></div></div>
+    <div class="av-body">
+      ${s.agent.prompt?`<div class="d-sub">prompt del sub-agente</div>${field('prompt',`<div class="mdwrap">${md(s.agent.prompt)}</div>`)}`:''}
+      <div class="d-sub">sub-llamadas</div><div class="sublist">${list}</div>
+    </div>
+  </div>`;
+}
+function subNode(c,i){
+  const isAgent=c.kind==='agent'&&c.agent&&c.agent.steps&&c.agent.steps.length;
+  const body=(c.kind==='decision'?decisionBlock(c.decision):'')+ioBlock(c);
+  const tok=c.tokens&&c.tokens.total?`<span class="tok">${fmt(c.tokens.total)}</span>`:'';
+  return `<div class="subnode ${c.flags&&c.flags.length?'flagged':''}" data-i="${i}" id="sub-${i}">
+    <div class="subrow"><span class="caret">▶</span><span class="kdot" style="background:${kc(c.kind)}"></span><span class="sl">${esc(c.label||c.kind)}</span>${isAgent?'<span class="drill">abrir sub-agente →</span>':''}<span class="meta">${tok}${c.timestamp?`<span>${c.timestamp.slice(11,19)}</span>`:''}</span></div>
+    <div class="subbody">${body||'<div class="empty">sin I/O</div>'}</div></div>`;
+}
+function wireAgent(s,crumbs){
+  const d=document.getElementById('detail');
+  d.querySelectorAll('.hcard').forEach(ch=>ch.onclick=()=>{const sn=d.querySelector('#sub-'+ch.dataset.i);if(sn){sn.classList.add('open');sn.scrollIntoView({behavior:'smooth',block:'start'});flash(sn);}});
+  d.querySelectorAll('.subnode').forEach(sn=>{
+    const i=+sn.dataset.i;
+    sn.querySelector('.subrow').onclick=e=>{
+      if(e.target.classList.contains('drill')){ detailFor(s.agent.steps[i], crumbs.concat([s])); document.getElementById('right').scrollTop=0; return; }
+      sn.classList.toggle('open');
+    };
+  });
+}
+function wireNav(crumbs){
+  const back=document.getElementById('back'); if(back) back.onclick=()=>{ const prev=crumbs[crumbs.length-1]; detailFor(prev, crumbs.slice(0,-1)); document.getElementById('right').scrollTop=0; };
+  const home=document.getElementById('home'); if(home) home.onclick=defaultDetail;
+}
+function flash(el){el.style.outline='2px solid '+css('--acc');setTimeout(()=>el.style.outline='',1200);}
+
+// ---- vista por defecto del panel derecho: overview ----
+function defaultDetail(){
+  document.getElementById('right').classList.remove('right-split');
+  document.querySelectorAll('.tlcard.active').forEach(e=>e.classList.remove('active'));
+  const s=DATA.summary||{}; const sc=s.stepCounts||{};
+  const byKind=Object.keys(sc).map(k=>`<span class="lg"><span class="kdot" style="background:${kc(k)}"></span>${KIND_ES[k]||k}: ${sc[k]}</span>`).join('');
+  const ag=(s.agents||[]).slice().sort((a,b)=>b.tokens-a.tokens).slice(0,8)
+    .map(a=>`<div class="kv"><span class="kk">${esc(a.name||'?')}</span><span class="kvs">${fmt(a.tokens)} tok · ${a.durationMs?ms(a.durationMs):'?'}${a.stats&&a.stats.toolUseCount?' · '+a.stats.toolUseCount+' tools':''}</span></div>`).join('');
+  document.getElementById('detail').innerHTML=
+    `<div class="d-h"><span class="d-ttl">${esc(DATA.title||'Resumen de la sesión')}</span></div>
+     <div class="d-meta">Selecciona un paso en la línea de tiempo para ver su I/O. Las cards de <b>sub-agente</b> abren su grafo de llamadas y el detalle de cada sub-llamada. Los <b>tramos a revisar</b> están en un reporte aparte.</div>
+     <div class="d-sub">composición</div><div class="legend" style="padding:0">${byKind}</div>
+     ${ag?`<div class="d-sub">sub-agentes por tokens</div>${ag}`:''}`;
+}
+
+// ---- búsqueda ----
+document.getElementById('q').oninput=e=>{ const q=e.target.value.toLowerCase();
+  document.querySelectorAll('#timeline .tlitem').forEach(it=>{ it.style.display=(!q||it.textContent.toLowerCase().includes(q))?'':'none'; });
+};
+
+indexSteps(DATA.steps);
+header(); legend(); timeline(); defaultDetail();
+</script>
+</body>
+</html>

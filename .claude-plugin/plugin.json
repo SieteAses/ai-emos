@@ -1,0 +1,11 @@
+{
+  "name": "ai-emos",
+  "version": "0.1.0",
+  "description": "Observabilidad de flujos de trabajo con IA, agnóstica al modelo/sistema. Reconstruye CÓMO trabajó la IA en una sesión (agentes, sub-agentes, skills, herramientas, I/O, decisiones human-in-the-loop, tokens, tramos a revisar) en un HTML interactivo. Fuentes: Claude Code, NDJSON (agentes propios), OpenTelemetry-GenAI, Cursor, OpenAI/Codex.",
+  "author": { "name": "Vicente Díaz", "email": "vicentediazg@gmail.com" },
+  "homepage": "https://github.com/SieteAses/ai-emos",
+  "repository": "https://github.com/SieteAses/ai-emos",
+  "license": "MIT",
+  "keywords": ["observability", "agents", "timeline", "telemetry", "claude-code", "opentelemetry"],
+  "skills": ["./skills/visualize-session", "./skills/instrument-source"]
+}

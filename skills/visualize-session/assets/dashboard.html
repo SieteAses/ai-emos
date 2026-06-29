@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ai-emos — dashboard cross-sesión</title>
+<style>
+  :root { --bg:#0f1115; --panel:#171a21; --panel2:#1e222b; --line:#2a2f3a; --tx:#e6e8ee; --mut:#9aa3b2; --acc:#6ea8fe; --bar:#3a64c0; }
+  *{box-sizing:border-box;} body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
+  header{padding:18px 22px;background:var(--panel);border-bottom:1px solid var(--line);}
+  h1{font-size:17px;margin:0;} .sub{color:var(--mut);font-size:13px;margin-top:3px;}
+  .stats{display:flex;flex-wrap:wrap;gap:14px;margin-top:12px;}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 12px;}
+  .stat b{font-size:16px;} .stat span{color:var(--mut);font-size:12px;display:block;}
+  main{padding:16px 22px;display:grid;grid-template-columns:1fr 1fr;gap:18px;}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;}
+  section.full{grid-column:1/-1;}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin:0 0 10px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);}
+  th{color:var(--mut);font-weight:600;cursor:pointer;user-select:none;}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;}
+  .bar{height:8px;background:var(--bar);border-radius:4px;}
+  .barwrap{background:var(--panel2);border-radius:4px;overflow:hidden;}
+  a{color:var(--acc);text-decoration:none;} a:hover{text-decoration:underline;}
+  .pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:11px;color:var(--mut);}
+</style>
+</head>
+<body>
+<header>
+  <h1>Dashboard cross-sesión</h1>
+  <div class="sub" id="sub"></div>
+  <div class="stats" id="stats"></div>
+</header>
+<main>
+  <section><h2>Por agente (tokens)</h2><div id="byAgent"></div></section>
+  <section><h2>Por skill (usos)</h2><div id="bySkill"></div></section>
+  <section class="full"><h2>Sesiones</h2><div id="sessions"></div></section>
+</main>
+
+<script id="report-data" type="application/json">
+{"generatedFrom":0,"totals":{"tokens":0,"decisions":0,"findings":0,"sessions":0},"byAgent":[],"bySkill":[],"sessions":[]}
+</script>
+<script>
+const D = JSON.parse(document.getElementById('report-data').textContent);
+const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
+const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+document.getElementById('sub').textContent = `${D.totals.sessions} sesiones agregadas`;
+const stat=(b,l)=>`<div class="stat"><b>${b}</b><span>${l}</span></div>`;
+document.getElementById('stats').innerHTML =
+  stat(fmt(D.totals.tokens),'tokens totales') + stat(D.totals.sessions,'sesiones') +
+  stat(D.totals.decisions,'decisiones humanas') + stat(D.totals.findings,'tramos a revisar');
+
+function barTable(rows, cols){
+  const max = Math.max(1, ...rows.map(r=>r._bar||0));
+  let h='<table><thead><tr>'+cols.map(c=>`<th>${c.h}</th>`).join('')+'</tr></thead><tbody>';
+  for(const r of rows){
+    h+='<tr>'+cols.map(c=>{
+      if(c.bar) return `<td><div class="barwrap"><div class="bar" style="width:${Math.round(100*(r._bar||0)/max)}%"></div></div></td>`;
+      const v=c.fn?c.fn(r):r[c.k];
+      return `<td class="${c.num?'num':''}">${v}</td>`;
+    }).join('')+'</tr>';
+  }
+  return h+'</tbody></table>';
+}
+
+document.getElementById('byAgent').innerHTML = barTable(
+  D.byAgent.map(a=>({...a,_bar:a.tokens})),
+  [{h:'agente',fn:a=>esc(a.name)},{h:'llamadas',k:'calls',num:1},{h:'tokens',fn:a=>fmt(a.tokens),num:1},{h:'',bar:1}]);
+
+document.getElementById('bySkill').innerHTML = barTable(
+  D.bySkill.map(s=>({...s,_bar:s.count})),
+  [{h:'skill',fn:s=>esc(s.name)},{h:'usos',k:'count',num:1},{h:'',bar:1}]);
+
+document.getElementById('sessions').innerHTML = barTable(
+  D.sessions.map(s=>({...s,_bar:s.tokens})),
+  [
+    {h:'sesión',fn:s=>`${esc(s.title||s.sessionId)} <span class="pill">${esc(s.source)}</span>`},
+    {h:'inicio',fn:s=>(s.startedAt||'').slice(0,16).replace('T',' ')},
+    {h:'pasos',k:'steps',num:1},
+    {h:'agentes',k:'agents',num:1},
+    {h:'decisiones',k:'decisions',num:1},
+    {h:'a revisar',k:'findings',num:1},
+    {h:'tokens',fn:s=>fmt(s.tokens),num:1},
+    {h:'',bar:1},
+  ]);
+</script>
+</body>
+</html>
