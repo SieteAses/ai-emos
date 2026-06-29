@@ -24,6 +24,7 @@ Fuentes soportadas (`core/adapters/`):
 | **OpenTelemetry-GenAI / OpenInference** | `otel-genai` | export OTLP-JSON (vía universal) |
 | **OpenAI / Codex CLI** | `openai-codex` | rollouts JSONL en `~/.codex/sessions` |
 | **Cursor** | `cursor` | export JSON del chat |
+| **opencode** | `opencode` | SQLite en `~/.local/share/opencode/opencode.db` (autodetecta ids `ses_…`) |
 
 ¿Otra fuente? Copia [`core/adapters/_template.mjs`](core/adapters/_template.mjs).
 
