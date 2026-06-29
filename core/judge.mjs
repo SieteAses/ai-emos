@@ -56,6 +56,7 @@ function cand(step, path, label, text) {
     path,
     kind: step.kind,
     label,
+    flags: step.flags || [], // señales mecánicas del paso, como contexto para el judge
     text: t.length > MAX_SEG_CHARS ? t.slice(0, MAX_SEG_CHARS) + '…' : t,
   }
 }
@@ -69,14 +70,21 @@ export const JUDGE_SYSTEM =
   'CALIDAD que valga la pena revisar e iterar (respuesta incompleta, ' +
   'razonamiento flojo, supuesto no verificado, se saltó un paso, ambiguo, ' +
   'opciones mal planteadas). NO marques cosas de costo/latencia/errores de ' +
-  'tool (eso ya se detecta aparte). Responde SOLO con JSON.'
+  'tool (eso ya se detecta aparte). ' +
+  'Rúbrica de severidad: "alta" = el resultado es incorrecto o engañoso, hay ' +
+  'que rehacerlo; "media" = sirve pero es flojo, conviene iterar; "baja" = ' +
+  'matiz menor, mejora opcional. ' +
+  'Si un segmento trae "señales mecánicas" (fue caro/lento/falló), úsalas SOLO ' +
+  'como contexto para confirmar o descartar un problema de calidad detrás del ' +
+  'síntoma; no las repitas como hallazgo. Responde SOLO con JSON.'
 
 export function buildJudgePrompt(candidates) {
   const items = candidates
-    .map(
-      c =>
-        `--- segmento index=${c.index} (${c.label}) ---\n${c.text}`,
-    )
+    .map(c => {
+      // adjunta las señales mecánicas del paso (si las hay) como contexto
+      const sig = c.flags && c.flags.length ? `\n(señales mecánicas: ${c.flags.join(', ')})` : ''
+      return `--- segmento index=${c.index} (${c.label}) ---${sig}\n${c.text}`
+    })
     .join('\n\n')
   return (
     'Evalúa estos segmentos. Devuelve un objeto JSON con la forma ' +

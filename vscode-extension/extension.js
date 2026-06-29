@@ -34,7 +34,39 @@ const { CORE, ASSETS } = resolveBase()
 async function loadCore() {
   const adapters = await import(pathToFileURL(path.join(CORE, 'adapters', 'index.mjs')).href)
   const render = await import(pathToFileURL(path.join(CORE, 'render.mjs')).href)
-  return { adapters, render }
+  const live = await import(pathToFileURL(path.join(CORE, 'live.mjs')).href)
+  const criteria = await import(pathToFileURL(path.join(CORE, 'criteria.mjs')).href)
+  return { adapters, render, live, criteria }
+}
+
+// Lee SOLO los settings que el usuario fijó de verdad (inspect: no defaults),
+// para no pisar ~/.config/ai-emos/criteria.json con los valores por defecto.
+function criteriaOverrides() {
+  const c = vscode.workspace.getConfiguration('aiEmos.criteria')
+  const o = {}
+  const set = (dotted, val) => {
+    if (val === undefined) return
+    const ks = dotted.split('.')
+    let t = o
+    ks.slice(0, -1).forEach(k => (t = t[k] || (t[k] = {})))
+    t[ks[ks.length - 1]] = val
+  }
+  const fixed = key => {
+    const i = c.inspect(key)
+    return i && (i.workspaceFolderValue ?? i.workspaceValue ?? i.globalValue)
+  }
+  for (const key of ['tokens.turnBudget', 'tokens.agentBudget', 'durationMs.tool', 'durationMs.agent', 'baseline.sigma']) {
+    set(key, fixed(key))
+  }
+  return o
+}
+
+// { criteria, baselines } para pasar a render.enrich / live.watchSession.
+function evalOptions(core) {
+  return {
+    criteria: core.criteria.loadCriteria(criteriaOverrides()),
+    baselines: core.criteria.loadBaselines(),
+  }
 }
 
 function cwd() {
@@ -99,17 +131,36 @@ function openTimelineReport(trace, label, timelineName, findingsName) {
       findingsPanel = null
     })
   }
-  return openReport(trace, 'timeline.html', `Timeline · ${label}`, timelineName, {
+  const panel = openReport(trace, 'timeline.html', `Timeline · ${label}`, timelineName, {
     findingsButton: findingsCount > 0,
     findingsCount,
     onOpenFindings,
   })
+  // Expone el abridor para que el modo en vivo pueda revelar los tramos desde
+  // una notificación nativa de VS Code (botón "Ver tramos").
+  panel.__openFindings = onOpenFindings
+  return panel
+}
+
+// Notificación nativa: avisa de tramos a revisar que APARECIERON en vivo. Solo
+// los de severidad alta (para no spamear); el resto se ve en el feed del panel.
+// Agrupa el lote en un único toast con botón "Ver tramos".
+function notifyLiveFindings(newFindings, panel) {
+  const alta = (newFindings || []).filter(f => f && f.severity === 'alta')
+  if (!alta.length) return
+  const head = alta[0]
+  const extra = alta.length > 1 ? ` (+${alta.length - 1} más)` : ''
+  const what = `${head.category || 'tramo'}: ${head.why || head.label || ''}`.trim()
+  vscode.window.showWarningMessage(`ai-emos · ${what}${extra}`, 'Ver tramos').then(pick => {
+    if (pick === 'Ver tramos' && panel && typeof panel.__openFindings === 'function') panel.__openFindings()
+  })
 }
 
 async function openTimelineForSession(sess) {
-  const { adapters, render } = await loadCore()
+  const core = await loadCore()
+  const { adapters, render } = core
   await withProgress('ai-emos: parseando sesión…', async () => {
-    const trace = render.enrich(await adapters.parse({ session: sess.file || sess.sessionId }))
+    const trace = render.enrich(await adapters.parse({ session: sess.file || sess.sessionId }), evalOptions(core))
     const label = sess.title || sess.sessionId
     openTimelineReport(
       trace,
@@ -120,12 +171,67 @@ async function openTimelineForSession(sess) {
   })
 }
 
+// Abre el timeline de una sesión EN VIVO: observa su archivo (fs.watch nativo,
+// cero deps) y empuja la traza re-parseada al webview por postMessage. El panel
+// reaplica los datos sin recargar (window.__aiEmosApply en el template).
+async function openLiveSession(sess) {
+  const core = await loadCore()
+  const { adapters, render, live } = core
+  const ref = sess.file || sess.sessionId
+  const ev = evalOptions(core)
+  await withProgress('ai-emos: abriendo sesión en vivo…', async () => {
+    const trace = render.enrich(await adapters.parse({ session: ref }), ev)
+    const label = (sess.title || sess.sessionId) + ' · EN VIVO'
+    const panel = openTimelineReport(
+      trace,
+      label,
+      `session-timeline-${sess.sessionId}.html`,
+      `session-findings-${sess.sessionId}.html`,
+    )
+    const closer = await live.watchSession({ session: ref, ...ev }, (t, info) => {
+      try {
+        panel.webview.postMessage({ type: 'data', trace: t })
+        const nf = (info && info.newFindings) || []
+        if (nf.length) {
+          // alimenta el feed en vivo del panel + actualiza el badge del botón
+          panel.webview.postMessage({
+            type: 'finding',
+            findings: nf,
+            total: ((t.summary && t.summary.findings) || []).length,
+          })
+          notifyLiveFindings(nf, panel) // toast nativo (solo severidad alta)
+        }
+      } catch {
+        /* panel cerrado */
+      }
+    })
+    panel.onDidDispose(() => closer())
+  })
+}
+
+async function cmdLiveSession() {
+  const { adapters } = await loadCore()
+  const rows = await withProgress('ai-emos: listando sesiones…', () => adapters.listSessions({}))
+  if (!rows.length) {
+    vscode.window.showWarningMessage('ai-emos: no encontré sesiones en ~/.claude/projects.')
+    return
+  }
+  const pick = await vscode.window.showQuickPick(
+    rows.slice(0, 100).map(r => ({ label: r.title || r.sessionId, description: r.sessionId, row: r })),
+    { placeHolder: 'Elige una sesión para verla EN VIVO (se refresca al cambiar el archivo)' },
+  )
+  if (!pick) return
+  await openLiveSession({ sessionId: pick.row.sessionId, file: pick.row.file, title: pick.row.title })
+}
+
 // Vista UNIFICADA: lista paginada de sesiones (rápida) + agregados bajo demanda.
 // Clic en una sesión → abre su timeline en pestaña nueva.
 // "Analizar agregados" → parsea las sesiones del filtro y devuelve byAgent/bySkill.
 async function cmdSessions() {
-  const { adapters, render } = await loadCore()
-  const rows = await withProgress('ai-emos: listando sesiones…', () => adapters.listSessions({}))
+  const core = await loadCore()
+  const { adapters, render, live } = core
+  const ev = evalOptions(core)
+  let rows = await withProgress('ai-emos: listando sesiones…', () => adapters.listSessions({}))
   if (!rows.length) {
     vscode.window.showWarningMessage('ai-emos: no encontré sesiones en ~/.claude/projects.')
     return
@@ -133,11 +239,37 @@ async function cmdSessions() {
   const template = fs.readFileSync(path.join(ASSETS, 'sessions.html'), 'utf8')
   const panel = makePanel('ai-emos · Sesiones')
   panel.webview.html = buildHtml(prepareWebview(template, makeNonce(), { saveButton: false }), { sessions: rows })
+
+  // Tabla EN VIVO: observa la raíz de sesiones de Claude Code (la fuente que
+  // crece durante una sesión) y re-lista con debounce, empujando filas frescas.
+  const projectsRoot = path.join(os.homedir(), '.claude', 'projects')
+  let relistTimer = null
+  const closeWatch = live.defaultWatcher([projectsRoot], () => {
+    clearTimeout(relistTimer)
+    relistTimer = setTimeout(async () => {
+      try {
+        rows = await adapters.listSessions({})
+        panel.webview.postMessage({ type: 'sessions', sessions: rows })
+      } catch {
+        /* re-listado fallido: el siguiente evento reintenta */
+      }
+    }, 400)
+  })
+  panel.onDidDispose(() => {
+    clearTimeout(relistTimer)
+    try {
+      closeWatch()
+    } catch {
+      /* noop */
+    }
+  })
+
   panel.webview.onDidReceiveMessage(async msg => {
     if (!msg) return
     if (msg.type === 'open') {
       const r = rows.find(x => x.sessionId === msg.id) || {}
-      await openTimelineForSession({ sessionId: msg.id, file: msg.file || r.file, title: r.title })
+      // abre la sesión EN VIVO (panel que se refresca al cambiar el archivo)
+      await openLiveSession({ sessionId: msg.id, file: msg.file || r.file, title: r.title })
     } else if (msg.type === 'aggregate') {
       const ids = new Set(msg.ids || [])
       const subset = rows.filter(r => ids.has(r.sessionId))
@@ -145,12 +277,14 @@ async function cmdSessions() {
         const traces = []
         for (const r of subset) {
           try {
-            traces.push(render.enrich(await adapters.parse({ session: r.file || r.sessionId })))
+            traces.push(render.enrich(await adapters.parse({ session: r.file || r.sessionId }), ev))
           } catch {
             /* salta sesiones ilegibles */
           }
         }
-        panel.webview.postMessage({ type: 'aggregateResult', data: render.aggregate(traces) })
+        const dash = render.aggregate(traces)
+        core.criteria.saveBaselines(dash.baselines) // refresca el baseline por agente
+        panel.webview.postMessage({ type: 'aggregateResult', data: dash })
       })
     }
   })
@@ -164,10 +298,11 @@ async function cmdOpenFile() {
   })
   if (!picks || !picks.length) return
   const file = picks[0].fsPath
-  const { adapters, render } = await loadCore()
+  const core = await loadCore()
+  const { adapters, render } = core
   await withProgress('ai-emos: parseando archivo…', async () => {
     try {
-      const trace = render.enrich(await adapters.parse({ session: file }))
+      const trace = render.enrich(await adapters.parse({ session: file }), evalOptions(core))
       const base = path.basename(file).replace(/\.[^.]+$/, '')
       openTimelineReport(trace, path.basename(file), base + '-timeline.html', base + '-findings.html')
     } catch (e) {
@@ -184,11 +319,12 @@ async function handleUri(uri) {
   const route = (uri.path || '').replace(/^\/+/, '')
   const q = new URLSearchParams(uri.query || '')
   if (route === '' || route === 'sessions') return cmdSessions()
-  if (route === 'timeline') {
+  if (route === 'timeline' || route === 'live') {
     const file = q.get('file')
     const session = q.get('session')
-    if (file) return openTimelineForSession({ sessionId: path.basename(file).replace(/\.[^.]+$/, ''), file })
-    if (session) return openTimelineForSession({ sessionId: session })
+    const open = route === 'live' ? openLiveSession : openTimelineForSession
+    if (file) return open({ sessionId: path.basename(file).replace(/\.[^.]+$/, ''), file })
+    if (session) return open({ sessionId: session })
   }
   vscode.window.showWarningMessage('ai-emos: URI no reconocida → ' + uri.toString())
 }
@@ -201,6 +337,7 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('aiEmos.sessions', () => cmdSessions().catch(err)),
     vscode.commands.registerCommand('aiEmos.openFile', () => cmdOpenFile().catch(err)),
+    vscode.commands.registerCommand('aiEmos.liveSession', () => cmdLiveSession().catch(err)),
     // alias de compatibilidad
     vscode.commands.registerCommand('aiEmos.visualizeSession', () => cmdSessions().catch(err)),
     // handoff desde agentes/chats vía deep link

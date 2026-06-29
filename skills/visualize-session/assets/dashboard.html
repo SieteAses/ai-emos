@@ -24,6 +24,20 @@
   .barwrap{background:var(--panel2);border-radius:4px;overflow:hidden;}
   a{color:var(--acc);text-decoration:none;} a:hover{text-decoration:underline;}
   .pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:11px;color:var(--mut);}
+  button{background:var(--panel2);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:5px 10px;cursor:pointer;font:inherit;}
+  button:hover{border-color:var(--acc);}
+  /* drill-down: agente en el tiempo */
+  tr.clickable{cursor:pointer;} tr.clickable:hover td{background:var(--panel2);}
+  .adbar{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
+  .adbar .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  .adbar .seg button{border:0;border-radius:0;padding:5px 12px;}
+  .adbar .seg button.on{background:var(--acc);color:#0b0d11;font-weight:600;}
+  .charts{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .chart{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;}
+  .charth{font-size:12px;color:var(--mut);margin-bottom:6px;}
+  .spark{display:block;width:100%;height:auto;}
+  .sparkmeta{display:flex;justify-content:space-between;color:var(--mut);font-size:11px;margin-top:4px;}
+  .note{color:var(--mut);font-size:12px;}
 </style>
 </head>
 <body>
@@ -33,8 +47,19 @@
   <div class="stats" id="stats"></div>
 </header>
 <main>
-  <section><h2>Por agente (tokens)</h2><div id="byAgent"></div></section>
+  <section><h2>Por agente (tokens) · <span style="text-transform:none;font-weight:400">clic en un agente → su comportamiento en el tiempo</span></h2><div id="byAgent"></div></section>
   <section><h2>Por skill (usos)</h2><div id="bySkill"></div></section>
+  <section class="full" id="agentDetail" style="display:none">
+    <div class="adbar">
+      <h2 id="adTitle" style="margin:0">Agente</h2>
+      <span class="sub" id="adSub"></span>
+      <div class="seg" style="margin-left:auto">
+        <button id="adSes" class="on">por sesión</button><button id="adDay">por día</button>
+      </div>
+      <button id="adClose" title="cerrar">✕</button>
+    </div>
+    <div class="charts" id="adCharts"></div>
+  </section>
   <section class="full"><h2>Sesiones</h2><div id="sessions"></div></section>
 </main>
 
@@ -42,21 +67,19 @@
 {"generatedFrom":0,"totals":{"tokens":0,"decisions":0,"findings":0,"sessions":0},"byAgent":[],"bySkill":[],"sessions":[]}
 </script>
 <script>
-const D = JSON.parse(document.getElementById('report-data').textContent);
 const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
 const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmtDur = ms => ms==null?'—':ms>=60000?(ms/60000).toFixed(1)+'m':ms>=1000?(ms/1000).toFixed(1)+'s':Math.round(ms)+'ms';
+const fmtPct = r => !r?'0%':(r*100).toFixed(r<0.1?1:0)+'%';
+const toolPills = tools => (tools||[]).slice(0,5).map(t=>`<span class="pill">${esc(t.name)} ${t.count}</span>`).join(' ') || '<span class="pill">—</span>';
 
-document.getElementById('sub').textContent = `${D.totals.sessions} sesiones agregadas`;
 const stat=(b,l)=>`<div class="stat"><b>${b}</b><span>${l}</span></div>`;
-document.getElementById('stats').innerHTML =
-  stat(fmt(D.totals.tokens),'tokens totales') + stat(D.totals.sessions,'sesiones') +
-  stat(D.totals.decisions,'decisiones humanas') + stat(D.totals.findings,'tramos a revisar');
 
-function barTable(rows, cols){
+function barTable(rows, cols, opts={}){
   const max = Math.max(1, ...rows.map(r=>r._bar||0));
   let h='<table><thead><tr>'+cols.map(c=>`<th>${c.h}</th>`).join('')+'</tr></thead><tbody>';
   for(const r of rows){
-    h+='<tr>'+cols.map(c=>{
+    h+='<tr '+(opts.rowAttr?opts.rowAttr(r):'')+'>'+cols.map(c=>{
       if(c.bar) return `<td><div class="barwrap"><div class="bar" style="width:${Math.round(100*(r._bar||0)/max)}%"></div></div></td>`;
       const v=c.fn?c.fn(r):r[c.k];
       return `<td class="${c.num?'num':''}">${v}</td>`;
@@ -65,9 +88,75 @@ function barTable(rows, cols){
   return h+'</tbody></table>';
 }
 
+// ---- drill-down: agente en el tiempo ----
+let DATA=null, curAgent=null, agMode='session';
+// agrega los puntos por día (suma de la jornada); recalcula errorRate del día
+function byDay(pts){
+  const m=new Map();
+  for(const p of pts){
+    const d=(p.startedAt||'').slice(0,10)||'?';
+    const e=m.get(d)||{title:d,startedAt:d,tokens:0,durationMs:0,errors:0,retries:0,calls:0,toolUses:0};
+    e.tokens+=p.tokens||0; e.durationMs+=p.durationMs||0; e.errors+=p.errors||0; e.retries+=p.retries||0; e.calls+=p.calls||0; e.toolUses+=p.toolUses||0;
+    m.set(d,e);
+  }
+  return [...m.values()].map(e=>({...e,errorRate:e.toolUses?e.errors/e.toolUses:0})).sort((a,b)=>a.startedAt.localeCompare(b.startedAt));
+}
+// sparkline SVG sin dependencias (línea + puntos con tooltip)
+function spark(pts,getY,fmtY){
+  const w=300,h=60,pad=8, n=pts.length, ys=pts.map(getY);
+  const mn=Math.min(0,...ys), mx=Math.max(1,...ys), span=(mx-mn)||1;
+  const X=i=> n===1? w/2 : pad+i*(w-2*pad)/(n-1);
+  const Y=v=> h-pad-((v-mn)/span)*(h-2*pad);
+  const pl=pts.map((p,i)=>X(i).toFixed(1)+','+Y(getY(p)).toFixed(1)).join(' ');
+  const dots=pts.map((p,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(getY(p)).toFixed(1)}" r="2.5" fill="var(--acc)"><title>${esc((p.title||p.sessionId||'')+': '+fmtY(getY(p)))}</title></circle>`).join('');
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}"><polyline fill="none" stroke="var(--acc)" stroke-width="1.5" points="${pl}"/>${dots}</svg>`
+    +`<div class="sparkmeta"><span>mín ${fmtY(mn)}</span><span>últ ${fmtY(getY(pts[n-1]))}</span><span>máx ${fmtY(mx)}</span></div>`;
+}
+function showAgent(name){
+  curAgent=name;
+  const raw=(DATA&&DATA.agentTimeline&&DATA.agentTimeline[name])||[];
+  const pts=agMode==='day'?byDay(raw):raw;
+  document.getElementById('adTitle').textContent='Agente · '+name;
+  document.getElementById('adSub').textContent=raw.length+' apariciones · '+pts.length+' '+(agMode==='day'?'días':'sesiones');
+  const charts=[
+    {t:'tokens',g:p=>p.tokens||0,f:fmt},
+    {t:'% error',g:p=>p.errorRate||0,f:fmtPct},
+    {t:'duración'+(agMode==='day'?' (total/día)':''),g:p=>p.durationMs||0,f:fmtDur},
+    {t:'reintentos',g:p=>p.retries||0,f:v=>String(Math.round(v))},
+  ];
+  document.getElementById('adCharts').innerHTML = pts.length
+    ? charts.map(c=>`<div class="chart"><div class="charth">${c.t}</div>${spark(pts,c.g,c.f)}</div>`).join('')
+    : '<div class="note">sin datos para este agente</div>';
+  const sec=document.getElementById('agentDetail'); sec.style.display=''; sec.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function setSeg(){ document.getElementById('adSes').classList.toggle('on',agMode==='session'); document.getElementById('adDay').classList.toggle('on',agMode==='day'); }
+document.getElementById('adSes').onclick=()=>{ agMode='session'; setSeg(); if(curAgent) showAgent(curAgent); };
+document.getElementById('adDay').onclick=()=>{ agMode='day'; setSeg(); if(curAgent) showAgent(curAgent); };
+document.getElementById('adClose').onclick=()=>{ curAgent=null; document.getElementById('agentDetail').style.display='none'; };
+
+function applyData(D){
+  DATA=D;
+document.getElementById('sub').textContent = `${D.totals.sessions} sesiones agregadas`;
+document.getElementById('stats').innerHTML =
+  stat(fmt(D.totals.tokens),'tokens totales') + stat(D.totals.sessions,'sesiones') +
+  stat(D.totals.decisions,'decisiones humanas') + stat(D.totals.findings,'tramos a revisar');
+
 document.getElementById('byAgent').innerHTML = barTable(
   D.byAgent.map(a=>({...a,_bar:a.tokens})),
-  [{h:'agente',fn:a=>esc(a.name)},{h:'llamadas',k:'calls',num:1},{h:'tokens',fn:a=>fmt(a.tokens),num:1},{h:'',bar:1}]);
+  [
+    {h:'agente',fn:a=>esc(a.name)},
+    {h:'llamadas',k:'calls',num:1},
+    {h:'tokens',fn:a=>fmt(a.tokens),num:1},
+    {h:'prom. tok',fn:a=>fmt(a.tokensAvg),num:1},
+    {h:'prom. dur',fn:a=>fmtDur(a.durationAvg),num:1},
+    {h:'% error',fn:a=>fmtPct(a.errorRate),num:1},
+    {h:'herramientas comunes',fn:a=>toolPills(a.tools)},
+    {h:'',bar:1},
+  ],
+  { rowAttr:a=>'data-agent="'+esc(String(a.name||'').replace(/"/g,''))+'" class="clickable"' });
+document.querySelectorAll('#byAgent tr.clickable').forEach(tr=>tr.onclick=()=>showAgent(tr.dataset.agent));
+// si hay un detalle abierto, refréscalo con los datos nuevos (modo en vivo)
+if(curAgent){ if(D.agentTimeline && D.agentTimeline[curAgent]) showAgent(curAgent); else { curAgent=null; document.getElementById('agentDetail').style.display='none'; } }
 
 document.getElementById('bySkill').innerHTML = barTable(
   D.bySkill.map(s=>({...s,_bar:s.count})),
@@ -85,6 +174,18 @@ document.getElementById('sessions').innerHTML = barTable(
     {h:'tokens',fn:s=>fmt(s.tokens),num:1},
     {h:'',bar:1},
   ]);
+}
+
+window.__aiEmosApply = applyData;
+applyData(JSON.parse(document.getElementById('report-data').textContent));
+
+// modo en vivo (SSE del servidor o postMessage de VS Code); inerte en standalone
+(function(){
+  window.addEventListener('message', e => { const m = e && e.data; if (m && m.type === 'data' && m.trace) applyData(m.trace); });
+  if (window.__aiEmosLive) {
+    try { const es = new EventSource(window.__aiEmosLive); es.onmessage = ev => { try { applyData(JSON.parse(ev.data)); } catch (e) {} }; } catch (e) {}
+  }
+})();
 </script>
 </body>
 </html>

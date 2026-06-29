@@ -26,6 +26,7 @@ import { spawn } from 'child_process'
 import { fileURLToPath } from 'url'
 import adapters from '../../../core/adapters/index.mjs'
 import { enrich, aggregate, mergeQualityFindings } from '../../../core/render.mjs'
+import { loadCriteria, loadBaselines, saveBaselines } from '../../../core/criteria.mjs'
 import judge from '../../../core/judge.mjs'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -84,15 +85,43 @@ async function handoff(uri) {
   return trySpawn('xdg-open', [uri])
 }
 
+// Carga los criterios efectivos (defaults ← config usuario ← .ai-emos.json ←
+// --criteria <file>) una sola vez. El baseline por agente se lee aparte.
+function resolveCriteria() {
+  const file = flag('--criteria', null)
+  let overrides = {}
+  if (typeof file === 'string') {
+    try {
+      overrides = JSON.parse(fs.readFileSync(file, 'utf8'))
+    } catch (e) {
+      process.stderr.write(`--criteria: no pude leer ${file}: ${e.message}\n`)
+    }
+  }
+  return loadCriteria(overrides)
+}
+
 async function main() {
   const adapter = flag('--adapter', null) || flag('--source', null)
   const since = flag('--since', null)
   const opts = { adapter, source: adapter, since }
+  const criteria = resolveCriteria()
+  const baselines = loadBaselines()
 
   if (has('--list')) {
     const rows = await adapters.listSessions(opts)
     process.stdout.write(JSON.stringify(rows, null, 2) + '\n')
     return
+  }
+
+  // Servidor local en vivo: timeline (o dashboard) que se refresca solo vía SSE.
+  if (has('--serve')) {
+    const { serve } = await import('./server.mjs')
+    const port = Number(flag('--port', null)) || 7878
+    const session = flag('--session', null)
+    const { url } = await serve({ port, session, dashboard: has('--dashboard'), adapter, source: adapter })
+    process.stderr.write(`ai-emos: servidor en vivo → ${url}\n(ctrl-c para detener)\n`)
+    if (flag('--open', null)) await handoff(url)
+    return // mantiene el proceso vivo mientras el servidor escucha
   }
 
   if (has('--dashboard')) {
@@ -101,12 +130,15 @@ async function main() {
     for (const r of rows) {
       try {
         const t = await adapters.parse({ ...opts, session: r.file || r.sessionId })
-        traces.push(enrich(t))
+        traces.push(enrich(t, { criteria, baselines }))
       } catch {
         /* salta sesiones ilegibles */
       }
     }
     const dash = aggregate(traces)
+    // persiste el baseline recién calculado para alimentar el criterio híbrido
+    const saved = saveBaselines(dash.baselines)
+    if (saved) process.stderr.write(`ai-emos: baseline actualizado → ${saved}\n`)
     await output(dash, 'dashboard.html', typeof flag('--html', null) === 'string' ? flag('--html', null) : null)
     return
   }
@@ -138,7 +170,7 @@ async function main() {
     }
   }
 
-  const trace = enrich(await adapters.parse({ ...opts, session }))
+  const trace = enrich(await adapters.parse({ ...opts, session }), { criteria, baselines })
 
   // judge de calidad opcional
   const judgeMode = flag('--judge', null)
