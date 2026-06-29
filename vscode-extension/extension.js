@@ -229,9 +229,9 @@ async function cmdLiveSession() {
 // "Analizar agregados" → parsea las sesiones del filtro y devuelve byAgent/bySkill.
 async function cmdSessions() {
   const core = await loadCore()
-  const { adapters, render } = core
+  const { adapters, render, live } = core
   const ev = evalOptions(core)
-  const rows = await withProgress('ai-emos: listando sesiones…', () => adapters.listSessions({}))
+  let rows = await withProgress('ai-emos: listando sesiones…', () => adapters.listSessions({}))
   if (!rows.length) {
     vscode.window.showWarningMessage('ai-emos: no encontré sesiones en ~/.claude/projects.')
     return
@@ -239,11 +239,37 @@ async function cmdSessions() {
   const template = fs.readFileSync(path.join(ASSETS, 'sessions.html'), 'utf8')
   const panel = makePanel('ai-emos · Sesiones')
   panel.webview.html = buildHtml(prepareWebview(template, makeNonce(), { saveButton: false }), { sessions: rows })
+
+  // Tabla EN VIVO: observa la raíz de sesiones de Claude Code (la fuente que
+  // crece durante una sesión) y re-lista con debounce, empujando filas frescas.
+  const projectsRoot = path.join(os.homedir(), '.claude', 'projects')
+  let relistTimer = null
+  const closeWatch = live.defaultWatcher([projectsRoot], () => {
+    clearTimeout(relistTimer)
+    relistTimer = setTimeout(async () => {
+      try {
+        rows = await adapters.listSessions({})
+        panel.webview.postMessage({ type: 'sessions', sessions: rows })
+      } catch {
+        /* re-listado fallido: el siguiente evento reintenta */
+      }
+    }, 400)
+  })
+  panel.onDidDispose(() => {
+    clearTimeout(relistTimer)
+    try {
+      closeWatch()
+    } catch {
+      /* noop */
+    }
+  })
+
   panel.webview.onDidReceiveMessage(async msg => {
     if (!msg) return
     if (msg.type === 'open') {
       const r = rows.find(x => x.sessionId === msg.id) || {}
-      await openTimelineForSession({ sessionId: msg.id, file: msg.file || r.file, title: r.title })
+      // abre la sesión EN VIVO (panel que se refresca al cambiar el archivo)
+      await openLiveSession({ sessionId: msg.id, file: msg.file || r.file, title: r.title })
     } else if (msg.type === 'aggregate') {
       const ids = new Set(msg.ids || [])
       const subset = rows.filter(r => ids.has(r.sessionId))

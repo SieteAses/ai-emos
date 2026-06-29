@@ -65,7 +65,7 @@
     </table>
     <div class="pager">
       <button id="prev">◀ anterior</button><span id="pginfo"></span><button id="next">siguiente ▶</button>
-      <span class="hint" style="margin-left:auto">clic en una sesión → abre su timeline en una pestaña nueva</span>
+      <span class="hint" style="margin-left:auto">clic en una sesión → abre su timeline EN VIVO · la tabla se actualiza sola</span>
     </div>
   </section>
 </main>
@@ -76,7 +76,7 @@ const DATA = JSON.parse(document.getElementById('report-data').textContent);
 const api = window.__vscodeApi || null;
 const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
-const all = (DATA.sessions||[]);
+let all = (DATA.sessions||[]);
 let page=0, size=50, filter='';
 
 function filtered(){
@@ -147,7 +147,13 @@ document.getElementById('analyze').onclick=()=>{
   const b=document.getElementById('analyze'); b.disabled=true; b.textContent=`Analizando ${ids.length}…`;
   api.postMessage({type:'aggregate', ids});
 };
-window.addEventListener('message', e=>{ const m=e.data; if(m&&m.type==='aggregateResult') renderAggregate(m.data); });
+// tabla EN VIVO: la extensión empuja filas frescas al cambiar las sesiones.
+// Preserva página/filtro; solo cambia el conjunto de datos.
+function applySessions(list){ all = list||[]; render(); }
+window.addEventListener('message', e=>{ const m=e.data; if(!m) return;
+  if(m.type==='aggregateResult') renderAggregate(m.data);
+  else if(m.type==='sessions') applySessions(m.sessions);
+});
 
 render();
 </script>
