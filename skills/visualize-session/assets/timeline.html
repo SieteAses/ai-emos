@@ -23,6 +23,9 @@
   .stats{display:flex;flex-wrap:nowrap;gap:8px;margin-left:auto;overflow-x:auto;padding-bottom:1px;}
   .stat{flex:none;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 9px;text-align:center;}
   .stat b{font-size:14px;} .stat span{color:var(--mut);font-size:10px;display:block;}
+  .langtoggle{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:none;}
+  .langtoggle button{border:0;border-radius:0;padding:4px 8px;background:var(--panel2);color:var(--mut);font-size:11px;cursor:pointer;}
+  .langtoggle button.on{background:var(--acc);color:#0b0d11;font-weight:600;}
   .layout{display:grid;grid-template-columns:minmax(300px,34%) 1fr;}
   #left{border-right:1px solid var(--line);height:calc(100vh - var(--hh));overflow:auto;padding:14px 8px 60px;}
   #right{height:calc(100vh - var(--hh));overflow:auto;padding:18px 22px 60px;}
@@ -142,6 +145,7 @@
     <div class="sub" id="sub"></div>
   </div>
   <div class="stats" id="stats"></div>
+  <div class="langtoggle" id="langtoggle"></div>
 </header>
 <div class="layout">
   <div id="left">
@@ -159,7 +163,76 @@
 
 <script>
 let DATA = JSON.parse(document.getElementById('report-data').textContent);
-const KIND_ES = { message:'mensaje', thinking:'razonamiento', llm_call:'llamada LLM', tool_call:'herramienta', agent:'sub-agente', skill:'skill', decision:'decisión', event:'evento' };
+
+// ---- i18n (ES por defecto; auto-detecta y permite toggle ES|EN) ----
+const I18N = {
+  es: {
+    docTitle:'ai-emos — timeline de sesión', h1:'Timeline de sesión', searchPh:'buscar en la línea de tiempo…',
+    source:'fuente', models:'modelos', na:'n/d',
+    stSteps:'pasos', stTokens:'tokens', stTurns:'turnos', stAgents:'sub-agentes', stTools:'herramientas',
+    stSkills:'skills', stDecisions:'decisiones', stReview:'a revisar', stDuration:'duración',
+    tokensTip:'La granularidad real de tokens es por turno de LLM (no por herramienta). Mira el desglose por turno en el panel de resumen.',
+    calls:'llamadas', back:'← volver', home:'inicio', noIO:'sin I/O',
+    callGraph:'grafo de llamadas ({0})', subCalls:'sub-llamadas ({0})', subAgentPrompt:'prompt del sub-agente',
+    callsLabel:'llamadas', openSubAgent:'abrir sub-agente →',
+    before:'antes', after:'después', text:'texto', input:'input', output:'output', errorTag:' · ERROR',
+    truncated:'… (recortado)', question:'pregunta', chosen:'✓ elegida', userDecision:'decisión del usuario',
+    sessionPrefix:'Sesión', summaryTitle:'Resumen de la sesión',
+    overviewHint:'Selecciona un paso en la línea de tiempo para ver su I/O. Las cards de <b>sub-agente</b> abren su grafo de llamadas y el detalle de cada sub-llamada. Los <b>tramos a revisar</b> están en un reporte aparte.',
+    composition:'composición', skillsUsed:'skills usadas', subAgentsByTokens:'sub-agentes por tokens',
+    tokensPerTurn:'tokens por turno · qué corrió cada uno', tokensPerTurnTip:'Los tokens del log se reportan por turno de LLM, no por herramienta individual.',
+    turn:'Turno', dismiss:'descartar', findingsBadge:'⚑ Tramos a revisar ({0})', segment:'tramo',
+    role:{user:'usuario',assistant:'asistente',system:'sistema',tool:'tool'},
+    kind:{message:'mensaje',thinking:'razonamiento',llm_call:'llamada LLM',tool_call:'herramienta',agent:'sub-agente',skill:'skill',decision:'decisión',event:'evento'},
+    cat:{friccion:'fricción',eficiencia:'eficiencia',latencia:'latencia',calidad:'calidad'},
+    sev:{alta:'alta',media:'media',baja:'baja'},
+    via:{'skill-tool':'tool Skill','command':'slash-command','bash':'script (Bash)'},
+  },
+  en: {
+    docTitle:'ai-emos — session timeline', h1:'Session timeline', searchPh:'search the timeline…',
+    source:'source', models:'models', na:'n/a',
+    stSteps:'steps', stTokens:'tokens', stTurns:'turns', stAgents:'sub-agents', stTools:'tools',
+    stSkills:'skills', stDecisions:'decisions', stReview:'to review', stDuration:'duration',
+    tokensTip:'Real token granularity is per LLM turn (not per tool). See the per-turn breakdown in the summary panel.',
+    calls:'calls', back:'← back', home:'home', noIO:'no I/O',
+    callGraph:'call graph ({0})', subCalls:'sub-calls ({0})', subAgentPrompt:'sub-agent prompt',
+    callsLabel:'calls', openSubAgent:'open sub-agent →',
+    before:'before', after:'after', text:'text', input:'input', output:'output', errorTag:' · ERROR',
+    truncated:'… (truncated)', question:'question', chosen:'✓ chosen', userDecision:'user decision',
+    sessionPrefix:'Session', summaryTitle:'Session summary',
+    overviewHint:'Select a step in the timeline to see its I/O. <b>Sub-agent</b> cards open their call graph and the detail of each sub-call. The <b>segments to review</b> are in a separate report.',
+    composition:'composition', skillsUsed:'skills used', subAgentsByTokens:'sub-agents by tokens',
+    tokensPerTurn:'tokens per turn · what each one ran', tokensPerTurnTip:'Log tokens are reported per LLM turn, not per individual tool.',
+    turn:'Turn', dismiss:'dismiss', findingsBadge:'⚑ Segments to review ({0})', segment:'segment',
+    role:{user:'user',assistant:'assistant',system:'system',tool:'tool'},
+    kind:{message:'message',thinking:'reasoning',llm_call:'LLM call',tool_call:'tool',agent:'sub-agent',skill:'skill',decision:'decision',event:'event'},
+    cat:{friccion:'friction',eficiencia:'efficiency',latencia:'latency',calidad:'quality'},
+    sev:{alta:'high',media:'medium',baja:'low'},
+    via:{'skill-tool':'Skill tool','command':'slash command','bash':'script (Bash)'},
+  },
+};
+function resolveLang(){
+  try{ const s=localStorage.getItem('aiEmosLang'); if(s==='es'||s==='en') return s; }catch(e){}
+  if(window.__lang==='es'||window.__lang==='en') return window.__lang;
+  return String(navigator.language||'es').toLowerCase().startsWith('en')?'en':'es';
+}
+let lang = resolveLang();
+const t = (k,...a)=>{ let s=(I18N[lang]&&I18N[lang][k]); if(s==null) s=I18N.es[k]; if(s==null) s=k; if(typeof s!=='string') return s; a.forEach((v,i)=>{s=s.split('{'+i+'}').join(v);}); return s; };
+const kindLabel = k => (I18N[lang].kind[k]||I18N.es.kind[k]||k);
+const catLabel = c => (I18N[lang].cat[c]||I18N.es.cat[c]||c);
+const sevLabel = s => (I18N[lang].sev[s]||I18N.es.sev[s]||s);
+function renderLangToggle(){
+  const el=document.getElementById('langtoggle'); if(!el) return;
+  el.innerHTML=['es','en'].map(l=>`<button data-l="${l}" class="${l===lang?'on':''}">${l.toUpperCase()}</button>`).join('');
+  el.querySelectorAll('button').forEach(b=>b.onclick=()=>setLang(b.dataset.l));
+}
+function setLang(l){ if(l!==lang){ lang=l; try{localStorage.setItem('aiEmosLang',l);}catch(e){} } document.documentElement.lang=l; applyI18n(); renderLangToggle(); }
+function applyI18n(){
+  document.title=t('docTitle');
+  document.getElementById('q').placeholder=t('searchPh');
+  renderAll();
+}
+
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
@@ -170,7 +243,7 @@ const pad2 = n => String(n).padStart(2,'0');
 const lt = iso => { if(!iso) return ''; const d=new Date(iso); return isNaN(d)?'':pad2(d.getHours())+':'+pad2(d.getMinutes())+':'+pad2(d.getSeconds()); };
 const ldt = iso => { if(!iso) return ''; const d=new Date(iso); return isNaN(d)?'':d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())+' '+lt(iso); };
 const ldtm = iso => { const s=ldt(iso); return s?s.slice(0,16):''; };
-const role2 = r => ({user:'usuario',assistant:'asistente',system:'sistema',tool:'tool'}[r]||'');
+const role2 = r => (I18N[lang].role[r]||I18N.es.role[r]||'');
 const kc = k => css('--'+k) || css('--event');
 const short = s => { s=String(s||''); return s.length>16?s.slice(0,15)+'…':s; };
 
@@ -205,7 +278,7 @@ function inline(s){ return s.replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*
 // ---- render input/output ----
 const CODE_KEYS=new Set(['command','code','content','file_text','sql','query','patch','script','body']);
 const MD_KEYS=new Set(['prompt','description','instructions','text','message','question']);
-function diffBlock(o,n){let h='<div class="diff">';if(o!=null){h+='<div class="hd">antes</div>';String(o).split('\n').forEach(l=>h+=`<div class="dl del">- ${esc(l)}</div>`);}if(n!=null){h+='<div class="hd">después</div>';String(n).split('\n').forEach(l=>h+=`<div class="dl add">+ ${esc(l)}</div>`);}return h+'</div>';}
+function diffBlock(o,n){let h='<div class="diff">';if(o!=null){h+=`<div class="hd">${t('before')}</div>`;String(o).split('\n').forEach(l=>h+=`<div class="dl del">- ${esc(l)}</div>`);}if(n!=null){h+=`<div class="hd">${t('after')}</div>`;String(n).split('\n').forEach(l=>h+=`<div class="dl add">+ ${esc(l)}</div>`);}return h+'</div>';}
 function renderObj(obj){
   if(Array.isArray(obj)) return `<pre class="code">${esc(JSON.stringify(obj,null,2))}</pre>`;
   let h='';
@@ -221,23 +294,23 @@ function renderObj(obj){
 }
 function renderVal(v){ if(v==null)return''; if(typeof v==='object')return renderObj(v); const s=String(v).trim(); if((s.startsWith('{')&&s.endsWith('}'))||(s.startsWith('[')&&s.endsWith(']'))){try{return renderObj(JSON.parse(s));}catch(e){}} return `<div class="mdwrap">${md(v)}</div>`; }
 function field(l,inner,err){return `<div class="iofield ${err?'err':''}"><span class="k">${esc(l)}</span>${inner}</div>`;}
-function ioBlock(s){let h='';if(s.text)h+=field('texto',`<div class="mdwrap">${md(s.text)}</div>`);if(s.io){if(s.io.input!=null)h+=field('input',renderVal(s.io.input));if(s.io.output!=null)h+=field('output'+(s.io.isError?' · ERROR':''),renderVal(s.io.output),s.io.isError);if(s.io.truncated)h+='<div class="truncated">… (recortado)</div>';}return h;}
-function decisionBlock(d){if(!d)return'';let h=field('pregunta',`<div class="mdwrap">${md(d.prompt||'')}</div>`);const chosen=(d.chosen||[]).map(String);let opts='';(d.options||[]).forEach(o=>{const c=chosen.some(x=>x===o.label||(o.label&&x.includes(o.label)));opts+=`<div class="opt ${c?'chosen':''}"><div class="lab">${esc(o.label)}${c?' <span class="chosen-tag">✓ elegida</span>':''}</div>${o.description?`<div class="desc">${esc(o.description)}</div>`:''}</div>`;});if(opts)h+=opts;if(chosen.length)h+=field('decisión del usuario',`<div class="mdwrap">${md(chosen.join('\n\n— '))}</div>`);return h;}
+function ioBlock(s){let h='';if(s.text)h+=field(t('text'),`<div class="mdwrap">${md(s.text)}</div>`);if(s.io){if(s.io.input!=null)h+=field(t('input'),renderVal(s.io.input));if(s.io.output!=null)h+=field(t('output')+(s.io.isError?t('errorTag'):''),renderVal(s.io.output),s.io.isError);if(s.io.truncated)h+=`<div class="truncated">${t('truncated')}</div>`;}return h;}
+function decisionBlock(d){if(!d)return'';let h=field(t('question'),`<div class="mdwrap">${md(d.prompt||'')}</div>`);const chosen=(d.chosen||[]).map(String);let opts='';(d.options||[]).forEach(o=>{const c=chosen.some(x=>x===o.label||(o.label&&x.includes(o.label)));opts+=`<div class="opt ${c?'chosen':''}"><div class="lab">${esc(o.label)}${c?` <span class="chosen-tag">${t('chosen')}</span>`:''}</div>${o.description?`<div class="desc">${esc(o.description)}</div>`:''}</div>`;});if(opts)h+=opts;if(chosen.length)h+=field(t('userDecision'),`<div class="mdwrap">${md(chosen.join('\n\n— '))}</div>`);return h;}
 function statsLine(st){const p=[];if(st.toolUseCount)p.push(st.toolUseCount+' tools');if(st.readCount)p.push(st.readCount+' reads');if(st.bashCount)p.push(st.bashCount+' bash');if(st.editFileCount)p.push(st.editFileCount+' edits');if(st.linesAdded||st.linesRemoved)p.push(`+${st.linesAdded||0}/-${st.linesRemoved||0}`);return p.join(' · ');}
 
 // ---- header / legend / timeline ----
 function header(){
-  document.getElementById('title').textContent = DATA.title || ('Sesión '+(DATA.sessionId||''));
+  document.getElementById('title').textContent = DATA.title || (t('sessionPrefix')+' '+(DATA.sessionId||''));
   const s=DATA.summary||{}; const span=DATA.startedAt?`${ldtm(DATA.startedAt)} → ${ldtm(DATA.endedAt)}`:'';
-  document.getElementById('sub').textContent=`fuente: ${DATA.source} · modelos: ${(s.models||[]).join(', ')||'n/d'} · ${span}`;
-  const sc=s.stepCounts||{}, st=(b,l,t)=>`<div class="stat"${t?` title="${esc(t)}"`:''}><b>${b}</b><span>${l}</span></div>`;
+  document.getElementById('sub').textContent=`${t('source')}: ${DATA.source} · ${t('models')}: ${(s.models||[]).join(', ')||t('na')} · ${span}`;
+  const sc=s.stepCounts||{}, st=(b,l,t2)=>`<div class="stat"${t2?` title="${esc(t2)}"`:''}><b>${b}</b><span>${l}</span></div>`;
   const total=Object.values(sc).reduce((a,b)=>a+b,0);
   const nTurns=(s.turns||[]).length, nSkills=(s.skills||[]).length;
-  document.getElementById('stats').innerHTML=st(fmt(total),'pasos')+st(fmt((s.tokens||{}).total||0),'tokens','La granularidad real de tokens es por turno de LLM (no por herramienta). Mira el desglose por turno en el panel de resumen.')+st(nTurns,'turnos')+st(sc.agent||0,'sub-agentes')+st(sc.tool_call||0,'herramientas')+(nSkills?st(nSkills,'skills'):'')+st((s.decisions||[]).length,'decisiones')+st((s.findings||[]).length,'a revisar')+st(ms(s.durationMs)||'n/d','duración');
+  document.getElementById('stats').innerHTML=st(fmt(total),t('stSteps'))+st(fmt((s.tokens||{}).total||0),t('stTokens'),t('tokensTip'))+st(nTurns,t('stTurns'))+st(sc.agent||0,t('stAgents'))+st(sc.tool_call||0,t('stTools'))+(nSkills?st(nSkills,t('stSkills')):'')+st((s.decisions||[]).length,t('stDecisions'))+st((s.findings||[]).length,t('stReview'))+st(ms(s.durationMs)||t('na'),t('stDuration'));
 }
 function legend(){
   const sc=(DATA.summary&&DATA.summary.stepCounts)||{};
-  document.getElementById('legend').innerHTML=Object.keys(sc).map(k=>`<span class="lg"><span class="kdot" style="background:${kc(k)}"></span>${KIND_ES[k]||k}</span>`).join('');
+  document.getElementById('legend').innerHTML=Object.keys(sc).map(k=>`<span class="lg"><span class="kdot" style="background:${kc(k)}"></span>${kindLabel(k)}</span>`).join('');
 }
 function timeline(){
   const tl=document.getElementById('timeline'); tl.innerHTML='';
@@ -246,9 +319,9 @@ function timeline(){
     const tokN=s.kind==='agent'&&s.agent?(s.agent.totalTokens||0):(s.tokens&&s.tokens.total||0);
     const tok=tokN?`<span class="tok">${fmt(tokN)} tok</span>`:'';
     const ts=lt(s.timestamp);
-    const calls=s.kind==='agent'&&s.agent?`<span class="tok">${(s.agent.stats&&s.agent.stats.toolUseCount)||(s.agent.steps?s.agent.steps.length:0)} llamadas</span>`:'';
+    const calls=s.kind==='agent'&&s.agent?`<span class="tok">${(s.agent.stats&&s.agent.stats.toolUseCount)||(s.agent.steps?s.agent.steps.length:0)} ${t('calls')}</span>`:'';
     it.innerHTML=`<div class="tlcard k-${s.kind} ${s.flags&&s.flags.length?'flagged':''}" data-uid="${s._uid}">
-      <div class="tlcard-h"><span class="kdot" style="background:${kc(s.kind)}"></span><span class="ttl">${esc(s.label||KIND_ES[s.kind]||s.kind)}</span></div>
+      <div class="tlcard-h"><span class="kdot" style="background:${kc(s.kind)}"></span><span class="ttl">${esc(s.label||kindLabel(s.kind))}</span></div>
       <div class="tlcard-m">${ts?`<span>${ts}</span>`:''}${s.role?`<span>${role2(s.role)}</span>`:''}${tok}${calls}</div>
     </div>`;
     it.querySelector('.tlcard').onclick=()=>select(s._uid);
@@ -266,22 +339,22 @@ function select(uid){
   document.getElementById('right').scrollTop=0;
 }
 function detailHeader(s,crumbs){
-  const nav = crumbs.length?`<button class="back" id="back">← volver</button>`:`<button class="home" id="home">inicio</button>`;
+  const nav = crumbs.length?`<button class="back" id="back">${t('back')}</button>`:`<button class="home" id="home">${t('home')}</button>`;
   const tokN=s.kind==='agent'&&s.agent?(s.agent.totalTokens||0):(s.tokens&&s.tokens.total||0);
-  return `<div class="d-h"><span class="kdot" style="background:${kc(s.kind)}"></span><span class="d-ttl">${esc(s.label||s.kind)}</span>${nav}</div>
+  return `<div class="d-h"><span class="kdot" style="background:${kc(s.kind)}"></span><span class="d-ttl">${esc(s.label||kindLabel(s.kind))}</span>${nav}</div>
     <div class="d-meta">${[s.role?role2(s.role):'',ldt(s.timestamp),tokN?fmt(tokN)+' tok':'',s.durationMs?ms(s.durationMs):''].filter(Boolean).join(' · ')}</div>`;
 }
 function detailFor(s,crumbs){
   const right=document.getElementById('right'), d=document.getElementById('detail');
   if(s.kind==='agent'&&s.agent&&s.agent.steps&&s.agent.steps.length){ right.classList.add('right-split'); d.innerHTML=agentDetail(s,crumbs); wireAgent(s,crumbs); }
-  else { right.classList.remove('right-split'); let body=(s.kind==='decision'?decisionBlock(s.decision):'')+ioBlock(s); d.innerHTML=detailHeader(s,crumbs)+(body||'<div class="empty">sin I/O</div>'); }
+  else { right.classList.remove('right-split'); let body=(s.kind==='decision'?decisionBlock(s.decision):'')+ioBlock(s); d.innerHTML=detailHeader(s,crumbs)+(body||`<div class="empty">${t('noIO')}</div>`); }
   wireNav(crumbs);
 }
 function agentDetail(s,crumbs){
   const subs=s.agent.steps;
   const graph=subs.map((c,i)=>`<div class="hitem ${i%2?'down':'up'}" style="--c:${kc(c.kind)}">
       <div class="hcard" data-i="${i}">
-        <div class="tlcard-h"><span class="kdot" style="background:${kc(c.kind)}"></span><span class="ttl">${esc(short(c.label||c.kind))}</span></div>
+        <div class="tlcard-h"><span class="kdot" style="background:${kc(c.kind)}"></span><span class="ttl">${esc(short(c.label||kindLabel(c.kind)))}</span></div>
         <div class="tlcard-m"><span>#${i+1}</span>${c.timestamp?`<span>${lt(c.timestamp)}</span>`:''}${c.tokens&&c.tokens.total?`<span class="tok">${fmt(c.tokens.total)} tok</span>`:''}</div>
       </div></div>`).join('');
   const list=subs.map((c,i)=>subNode(c,i)).join('');
@@ -289,13 +362,13 @@ function agentDetail(s,crumbs){
   return `<div class="agentview">
     <div class="av-graphcard">
       ${detailHeader(s,crumbs)}
-      <div class="d-sub" style="margin-top:10px">grafo de llamadas (${subs.length})${st?' · '+st:''}</div>
+      <div class="d-sub" style="margin-top:10px">${t('callGraph', subs.length)}${st?' · '+st:''}</div>
       <div class="htl"><div class="htrack">${graph}</div></div>
     </div>
     <div class="av-listcard">
-      <div class="av-listhead"><span class="d-sub" style="margin:0">sub-llamadas (${subs.length})</span></div>
+      <div class="av-listhead"><span class="d-sub" style="margin:0">${t('subCalls', subs.length)}</span></div>
       <div class="av-listbody">
-        ${s.agent.prompt?`<div class="d-sub" style="margin-top:0">prompt del sub-agente</div>${field('prompt',`<div class="mdwrap">${md(s.agent.prompt)}</div>`)}<div class="d-sub">llamadas</div>`:''}
+        ${s.agent.prompt?`<div class="d-sub" style="margin-top:0">${t('subAgentPrompt')}</div>${field('prompt',`<div class="mdwrap">${md(s.agent.prompt)}</div>`)}<div class="d-sub">${t('callsLabel')}</div>`:''}
         <div class="sublist">${list}</div>
       </div>
     </div>
@@ -306,8 +379,8 @@ function subNode(c,i){
   const body=(c.kind==='decision'?decisionBlock(c.decision):'')+ioBlock(c);
   const tok=c.tokens&&c.tokens.total?`<span class="tok">${fmt(c.tokens.total)}</span>`:'';
   return `<div class="subnode ${c.flags&&c.flags.length?'flagged':''}" data-i="${i}" id="sub-${i}">
-    <div class="subrow"><span class="caret">▶</span><span class="kdot" style="background:${kc(c.kind)}"></span><span class="sl">${esc(c.label||c.kind)}</span>${isAgent?'<span class="drill">abrir sub-agente →</span>':''}<span class="meta">${tok}${c.timestamp?`<span>${lt(c.timestamp)}</span>`:''}</span></div>
-    <div class="subbody">${body||'<div class="empty">sin I/O</div>'}</div></div>`;
+    <div class="subrow"><span class="caret">▶</span><span class="kdot" style="background:${kc(c.kind)}"></span><span class="sl">${esc(c.label||kindLabel(c.kind))}</span>${isAgent?`<span class="drill">${t('openSubAgent')}</span>`:''}<span class="meta">${tok}${c.timestamp?`<span>${lt(c.timestamp)}</span>`:''}</span></div>
+    <div class="subbody">${body||`<div class="empty">${t('noIO')}</div>`}</div></div>`;
 }
 function wireAgent(s,crumbs){
   const d=document.getElementById('detail');
@@ -342,20 +415,19 @@ function defaultDetail(){
   document.getElementById('right').classList.remove('right-split');
   document.querySelectorAll('.tlcard.active').forEach(e=>e.classList.remove('active'));
   const s=DATA.summary||{}; const sc=s.stepCounts||{};
-  const byKind=Object.keys(sc).map(k=>`<span class="lg"><span class="kdot" style="background:${kc(k)}"></span>${KIND_ES[k]||k}: ${sc[k]}</span>`).join('');
+  const byKind=Object.keys(sc).map(k=>`<span class="lg"><span class="kdot" style="background:${kc(k)}"></span>${kindLabel(k)}: ${sc[k]}</span>`).join('');
   const ag=(s.agents||[]).slice().sort((a,b)=>b.tokens-a.tokens).slice(0,8)
     .map(a=>`<div class="kv"><span class="kk">${esc(a.name||'?')}</span><span class="kvs">${fmt(a.tokens)} tok · ${a.durationMs?ms(a.durationMs):'?'}${a.stats&&a.stats.toolUseCount?' · '+a.stats.toolUseCount+' tools':''}</span></div>`).join('');
-  const VIA={'skill-tool':'tool Skill','command':'slash-command','bash':'script (Bash)'};
-  const sk=(s.skills||[]).map(k=>`<div class="kv"><span class="kk">${esc(k.name)}</span><span class="kvs">${k.count}×${(k.via||[]).length?' · '+k.via.map(v=>VIA[v]||v).join(' / '):''}</span></div>`).join('');
+  const sk=(s.skills||[]).map(k=>`<div class="kv"><span class="kk">${esc(k.name)}</span><span class="kvs">${k.count}×${(k.via||[]).length?' · '+k.via.map(v=>(I18N[lang].via[v]||I18N.es.via[v]||v)).join(' / '):''}</span></div>`).join('');
   const turnTools=ts=>{const c={};(ts||[]).forEach(l=>{const n=String(l).replace(/^tool:|^skill:|^agente:/,'');c[n]=(c[n]||0)+1;});return Object.entries(c).map(([n,k])=>k>1?`${n}×${k}`:n).join(' · ');};
-  const tn=(s.turns||[]).map(t=>{const tools=turnTools(t.tools);return `<div class="kv"><span class="kk">Turno ${t.turn}${t.model?' · '+esc(String(t.model).replace(/^claude-/,'')):''}:</span><span class="kvs">${t.tokens?fmt(t.tokens.total)+' tok':'—'}${tools?' · '+esc(tools):''}</span></div>`;}).join('');
+  const tn=(s.turns||[]).map(t2=>{const tools=turnTools(t2.tools);return `<div class="kv"><span class="kk">${t('turn')} ${t2.turn}${t2.model?' · '+esc(String(t2.model).replace(/^claude-/,'')):''}:</span><span class="kvs">${t2.tokens?fmt(t2.tokens.total)+' tok':'—'}${tools?' · '+esc(tools):''}</span></div>`;}).join('');
   document.getElementById('detail').innerHTML=
-    `<div class="d-h"><span class="d-ttl">${esc(DATA.title||'Resumen de la sesión')}</span></div>
-     <div class="d-meta">Selecciona un paso en la línea de tiempo para ver su I/O. Las cards de <b>sub-agente</b> abren su grafo de llamadas y el detalle de cada sub-llamada. Los <b>tramos a revisar</b> están en un reporte aparte.</div>
-     <div class="d-sub">composición</div><div class="legend" style="padding:0">${byKind}</div>
-     ${sk?`<div class="d-sub">skills usadas</div>${sk}`:''}
-     ${ag?`<div class="d-sub">sub-agentes por tokens</div>${ag}`:''}
-     ${tn?`<div class="d-sub" title="Los tokens del log se reportan por turno de LLM, no por herramienta individual.">tokens por turno · qué corrió cada uno</div>${tn}`:''}`;
+    `<div class="d-h"><span class="d-ttl">${esc(DATA.title||t('summaryTitle'))}</span></div>
+     <div class="d-meta">${t('overviewHint')}</div>
+     <div class="d-sub">${t('composition')}</div><div class="legend" style="padding:0">${byKind}</div>
+     ${sk?`<div class="d-sub">${t('skillsUsed')}</div>${sk}`:''}
+     ${ag?`<div class="d-sub">${t('subAgentsByTokens')}</div>${ag}`:''}
+     ${tn?`<div class="d-sub" title="${esc(t('tokensPerTurnTip'))}">${t('tokensPerTurn')}</div>${tn}`:''}`;
 }
 
 // ---- búsqueda ----
@@ -373,7 +445,9 @@ function renderAll(){
   else defaultDetail();
   if(left) left.scrollTop=leftScroll;
 }
-renderAll();
+document.documentElement.lang=lang;
+renderLangToggle();
+applyI18n();
 
 // ---- modo en vivo: reaplica la traza fresca sin recargar la página ----
 // VS Code envía postMessage({type:'data',trace}); el servidor expone una URL
@@ -391,7 +465,7 @@ function pushFinding(f){
   const feed=document.getElementById('livefeed'); if(!feed||!f) return;
   const el=document.createElement('div'); el.className='lftoast';
   el.style.setProperty('--c', css(SEV_C[f.severity]||'--media'));
-  el.innerHTML=`<div class="lfh"><span class="lfcat">${esc(f.category||'tramo')} · ${esc(f.severity||'')}</span><span class="lfx" title="descartar">×</span></div>`+
+  el.innerHTML=`<div class="lfh"><span class="lfcat">${esc(f.category?catLabel(f.category):t('segment'))} · ${esc(f.severity?sevLabel(f.severity):'')}</span><span class="lfx" title="${t('dismiss')}">×</span></div>`+
     `<div class="lfwhy">${esc(f.why||f.label||'')}</div>`;
   const uid=lfUid(f);
   if(uid){ el.onclick=ev=>{ if(!ev.target.classList.contains('lfx')) select(uid); }; }
@@ -404,7 +478,7 @@ function applyFindingEvent(p){
   if(!p) return;
   (p.findings||[]).forEach(pushFinding);
   const b=document.getElementById('__avfind'); // badge del botón de la extensión
-  if(b&&p.total!=null) b.textContent='⚑ Tramos a revisar ('+p.total+')';
+  if(b&&p.total!=null) b.textContent=t('findingsBadge', p.total);
 }
 
 (function(){

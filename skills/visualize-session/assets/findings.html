@@ -12,9 +12,12 @@
   }
   *{box-sizing:border-box;}
   body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
-  header{padding:16px 22px;background:var(--panel);border-bottom:1px solid var(--line);}
+  header{padding:16px 22px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:flex-start;gap:16px;}
   h1{font-size:17px;margin:0 0 3px;}
   .sub{color:var(--mut);font-size:12px;}
+  .langtoggle{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-left:auto;flex:none;}
+  .langtoggle button{border:0;border-radius:0;padding:5px 9px;background:var(--panel2);color:var(--mut);font-size:11px;cursor:pointer;}
+  .langtoggle button.on{background:var(--acc);color:#0b0d11;font-weight:600;}
   .wrap{max-width:960px;margin:0 auto;padding:20px 22px 60px;}
   .lefthead{display:flex;gap:8px;align-items:center;padding:0 0 14px;}
   .lefthead input{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--tx);border-radius:8px;padding:6px 10px;}
@@ -59,8 +62,11 @@
 </head>
 <body>
 <header>
-  <h1 id="title">Tramos a revisar</h1>
-  <div class="sub" id="sub"></div>
+  <div>
+    <h1 id="title">Tramos a revisar</h1>
+    <div class="sub" id="sub"></div>
+  </div>
+  <div class="langtoggle" id="langtoggle"></div>
 </header>
 <div class="wrap">
   <div class="lefthead"><input type="search" id="q" placeholder="buscar en los tramos…" /></div>
@@ -73,11 +79,57 @@
 
 <script>
 const DATA = JSON.parse(document.getElementById('report-data').textContent);
-const KIND_ES = { message:'mensaje', thinking:'razonamiento', llm_call:'llamada LLM', tool_call:'herramienta', agent:'sub-agente', skill:'skill', decision:'decisión', event:'evento' };
+
+// ---- i18n (ES por defecto; auto-detecta y permite toggle ES|EN) ----
+const I18N = {
+  es: {
+    docTitle:'ai-emos — tramos a revisar', title:'Tramos a revisar', titleN:'Tramos a revisar ({0})',
+    searchPh:'buscar en los tramos…', empty:'Sin tramos marcados.',
+    sub:'{0} · fuente: {1}{2}', session:'Sesión {0}', qualityLLM:' · calidad/LLM',
+    before:'antes', after:'después', text:'texto', input:'input', output:'output', errorTag:' · ERROR',
+    truncated:'… (recortado)', question:'pregunta', chosen:'✓ elegida', userDecision:'decisión del usuario',
+    noIO:'sin I/O', stepNotFound:'paso no encontrado en la traza.',
+    role:{user:'usuario',assistant:'asistente',system:'sistema',tool:'tool'},
+    cat:{friccion:'fricción',eficiencia:'eficiencia',latencia:'latencia',calidad:'calidad'},
+    sev:{alta:'alta',media:'media',baja:'baja'},
+  },
+  en: {
+    docTitle:'ai-emos — segments to review', title:'Segments to review', titleN:'Segments to review ({0})',
+    searchPh:'search the segments…', empty:'No segments flagged.',
+    sub:'{0} · source: {1}{2}', session:'Session {0}', qualityLLM:' · quality/LLM',
+    before:'before', after:'after', text:'text', input:'input', output:'output', errorTag:' · ERROR',
+    truncated:'… (truncated)', question:'question', chosen:'✓ chosen', userDecision:'user decision',
+    noIO:'no I/O', stepNotFound:'step not found in the trace.',
+    role:{user:'user',assistant:'assistant',system:'system',tool:'tool'},
+    cat:{friccion:'friction',eficiencia:'efficiency',latencia:'latency',calidad:'quality'},
+    sev:{alta:'high',media:'medium',baja:'low'},
+  },
+};
+function resolveLang(){
+  try{ const s=localStorage.getItem('aiEmosLang'); if(s==='es'||s==='en') return s; }catch(e){}
+  if(window.__lang==='es'||window.__lang==='en') return window.__lang;
+  return String(navigator.language||'es').toLowerCase().startsWith('en')?'en':'es';
+}
+let lang = resolveLang();
+const t = (k,...a)=>{ let s=(I18N[lang]&&I18N[lang][k])||I18N.es[k]||k; if(typeof s!=='string') return s; a.forEach((v,i)=>{s=s.split('{'+i+'}').join(v);}); return s; };
+const catLabel = c => (I18N[lang].cat[c]||I18N.es.cat[c]||c);
+const sevLabel = s => (I18N[lang].sev[s]||I18N.es.sev[s]||s);
+function renderLangToggle(){
+  const el=document.getElementById('langtoggle'); if(!el) return;
+  el.innerHTML=['es','en'].map(l=>`<button data-l="${l}" class="${l===lang?'on':''}">${l.toUpperCase()}</button>`).join('');
+  el.querySelectorAll('button').forEach(b=>b.onclick=()=>setLang(b.dataset.l));
+}
+function setLang(l){ if(l!==lang){ lang=l; try{localStorage.setItem('aiEmosLang',l);}catch(e){} } document.documentElement.lang=l; applyI18n(); renderLangToggle(); }
+function applyI18n(){
+  document.title=t('docTitle');
+  document.getElementById('q').placeholder=t('searchPh');
+  header(); renderFindings();
+}
+
 const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
 const ms = n => n==null?'':(n>=60000?(n/60000).toFixed(1)+'m':n>=1000?(n/1000).toFixed(1)+'s':n+'ms');
-const role2 = r => ({user:'usuario',assistant:'asistente',system:'sistema',tool:'tool'}[r]||'');
+const role2 = r => (I18N[lang].role[r]||I18N.es.role[r]||'');
 
 // ---- índice de pasos por (index,label), incluye anidados de sub-agentes ----
 const STEPS = [];
@@ -114,7 +166,7 @@ function inline(s){ return s.replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*
 // ---- render input/output (espejo del timeline) ----
 const CODE_KEYS=new Set(['command','code','content','file_text','sql','query','patch','script','body']);
 const MD_KEYS=new Set(['prompt','description','instructions','text','message','question']);
-function diffBlock(o,n){let h='<div class="diff">';if(o!=null){h+='<div class="hd">antes</div>';String(o).split('\n').forEach(l=>h+=`<div class="dl del">- ${esc(l)}</div>`);}if(n!=null){h+='<div class="hd">después</div>';String(n).split('\n').forEach(l=>h+=`<div class="dl add">+ ${esc(l)}</div>`);}return h+'</div>';}
+function diffBlock(o,n){let h='<div class="diff">';if(o!=null){h+=`<div class="hd">${t('before')}</div>`;String(o).split('\n').forEach(l=>h+=`<div class="dl del">- ${esc(l)}</div>`);}if(n!=null){h+=`<div class="hd">${t('after')}</div>`;String(n).split('\n').forEach(l=>h+=`<div class="dl add">+ ${esc(l)}</div>`);}return h+'</div>';}
 function renderObj(obj){
   if(Array.isArray(obj)) return `<pre class="code">${esc(JSON.stringify(obj,null,2))}</pre>`;
   let h='';
@@ -130,8 +182,8 @@ function renderObj(obj){
 }
 function renderVal(v){ if(v==null)return''; if(typeof v==='object')return renderObj(v); const s=String(v).trim(); if((s.startsWith('{')&&s.endsWith('}'))||(s.startsWith('[')&&s.endsWith(']'))){try{return renderObj(JSON.parse(s));}catch(e){}} return `<div class="mdwrap">${md(v)}</div>`; }
 function field(l,inner,err){return `<div class="iofield ${err?'err':''}"><span class="k">${esc(l)}</span>${inner}</div>`;}
-function ioBlock(s){let h='';if(s.text)h+=field('texto',`<div class="mdwrap">${md(s.text)}</div>`);if(s.io){if(s.io.input!=null)h+=field('input',renderVal(s.io.input));if(s.io.output!=null)h+=field('output'+(s.io.isError?' · ERROR':''),renderVal(s.io.output),s.io.isError);if(s.io.truncated)h+='<div class="truncated">… (recortado)</div>';}return h;}
-function decisionBlock(d){if(!d)return'';let h=field('pregunta',`<div class="mdwrap">${md(d.prompt||'')}</div>`);const chosen=(d.chosen||[]).map(String);let opts='';(d.options||[]).forEach(o=>{const c=chosen.some(x=>x===o.label||(o.label&&x.includes(o.label)));opts+=`<div class="opt ${c?'chosen':''}"><div class="lab">${esc(o.label)}${c?' ✓ elegida':''}</div>${o.description?`<div class="desc">${esc(o.description)}</div>`:''}</div>`;});if(opts)h+=opts;if(chosen.length)h+=field('decisión del usuario',`<div class="mdwrap">${md(chosen.join('\n\n— '))}</div>`);return h;}
+function ioBlock(s){let h='';if(s.text)h+=field(t('text'),`<div class="mdwrap">${md(s.text)}</div>`);if(s.io){if(s.io.input!=null)h+=field(t('input'),renderVal(s.io.input));if(s.io.output!=null)h+=field(t('output')+(s.io.isError?t('errorTag'):''),renderVal(s.io.output),s.io.isError);if(s.io.truncated)h+=`<div class="truncated">${t('truncated')}</div>`;}return h;}
+function decisionBlock(d){if(!d)return'';let h=field(t('question'),`<div class="mdwrap">${md(d.prompt||'')}</div>`);const chosen=(d.chosen||[]).map(String);let opts='';(d.options||[]).forEach(o=>{const c=chosen.some(x=>x===o.label||(o.label&&x.includes(o.label)));opts+=`<div class="opt ${c?'chosen':''}"><div class="lab">${esc(o.label)}${c?' '+t('chosen'):''}</div>${o.description?`<div class="desc">${esc(o.description)}</div>`:''}</div>`;});if(opts)h+=opts;if(chosen.length)h+=field(t('userDecision'),`<div class="mdwrap">${md(chosen.join('\n\n— '))}</div>`);return h;}
 
 // ---- detalle de un tramo (autocontenido) ----
 function findingBody(x){
@@ -141,9 +193,9 @@ function findingBody(x){
     const meta=[s.role?role2(s.role):'',s.timestamp?s.timestamp.replace('T',' ').slice(0,19):'',(s.tokens&&s.tokens.total)?fmt(s.tokens.total)+' tok':'',s.durationMs?ms(s.durationMs):''].filter(Boolean).join(' · ');
     if(meta) h+=`<div class="d-meta">${esc(meta)}</div>`;
     const body=(s.kind==='decision'?decisionBlock(s.decision):'')+ioBlock(s);
-    h+= body || '<div class="empty">sin I/O</div>';
+    h+= body || `<div class="empty">${t('noIO')}</div>`;
   } else {
-    h+='<div class="empty">paso no encontrado en la traza.</div>';
+    h+=`<div class="empty">${t('stepNotFound')}</div>`;
   }
   if(x.recommendation) h+=`<div class="rec">→ ${esc(x.recommendation)}</div>`;
   return h;
@@ -152,9 +204,9 @@ function findingBody(x){
 // ---- render lista de tramos ----
 function header(){
   const f=(DATA.summary&&DATA.summary.findings)||[];
-  document.getElementById('title').textContent=`Tramos a revisar (${f.length})`;
+  document.getElementById('title').textContent=t('titleN', f.length);
   const span=DATA.startedAt?`${DATA.startedAt.slice(0,16).replace('T',' ')} → ${(DATA.endedAt||'').slice(0,16).replace('T',' ')}`:'';
-  document.getElementById('sub').textContent=`${DATA.title||('Sesión '+(DATA.sessionId||''))} · fuente: ${DATA.source}${span?' · '+span:''}`;
+  document.getElementById('sub').textContent=t('sub', DATA.title||t('session', DATA.sessionId||''), DATA.source, span?' · '+span:'');
 }
 function renderFindings(){
   const f=(DATA.summary&&DATA.summary.findings)||[];
@@ -164,12 +216,12 @@ function renderFindings(){
   box.innerHTML = sorted.length ? sorted.map((x,n)=>`
     <div class="finding ${esc(x.severity)}" data-fi="${n}">
       <div class="fhead">
-        <div class="cat"><span class="caret">▶</span><span class="sevdot" style="background:var(--${esc(x.severity)})"></span>${esc(x.category)} · ${esc(x.severity)}${x.source==='judge'?' · calidad/LLM':''}</div>
+        <div class="cat"><span class="caret">▶</span><span class="sevdot" style="background:var(--${esc(x.severity)})"></span>${esc(catLabel(x.category))} · ${esc(sevLabel(x.severity))}${x.source==='judge'?t('qualityLLM'):''}</div>
         <div class="why">${esc(x.why)}</div>
         <code class="path">${esc(x.path||'')}${esc(x.label||'')}</code>
       </div>
       <div class="fbody">${findingBody(x)}</div>
-    </div>`).join('') : '<div class="empty">Sin tramos marcados.</div>';
+    </div>`).join('') : `<div class="empty">${t('empty')}</div>`;
   box.querySelectorAll('.finding').forEach(el=>{
     el.querySelector('.fhead').onclick=()=>el.classList.toggle('open');
   });
@@ -181,7 +233,9 @@ document.getElementById('q').oninput=e=>{ const q=e.target.value.toLowerCase();
 };
 
 indexSteps(DATA.steps);
-header(); renderFindings();
+document.documentElement.lang=lang;
+renderLangToggle();
+applyI18n();
 </script>
 </body>
 </html>

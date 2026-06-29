@@ -1,0 +1,11 @@
+{
+  "ext.description": "Observabilidad de flujos de trabajo con IA: abre el timeline interactivo de una sesión (Claude Code, NDJSON, OpenTelemetry-GenAI, Cursor, Codex) en una ventana de VS Code, con tramos a revisar y opción de guardar.",
+  "cmd.sessions.title": "Sesiones (lista + agregados)",
+  "cmd.openFile.title": "Visualizar archivo (NDJSON/OTel/Cursor/Codex)",
+  "cmd.liveSession.title": "Ver sesión en vivo (se refresca al cambiar)",
+  "config.tokens.turnBudget": "Tokens frescos (input+output) por turno por encima de los cuales el turno se marca como caro.",
+  "config.tokens.agentBudget": "Tokens totales de un sub-agente por encima de los cuales se marca como caro.",
+  "config.durationMs.tool": "Milisegundos por encima de los cuales una herramienta se marca como lenta.",
+  "config.durationMs.agent": "Milisegundos por encima de los cuales un sub-agente se marca como lento.",
+  "config.baseline.sigma": "Desviaciones estándar sobre la media histórica del agente para marcarlo como atípico."
+}

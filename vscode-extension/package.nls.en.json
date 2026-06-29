@@ -1,0 +1,11 @@
+{
+  "ext.description": "Observability for AI workflows: open the interactive timeline of a session (Claude Code, NDJSON, OpenTelemetry-GenAI, Cursor, Codex) in a VS Code window, with segments to review and a save option.",
+  "cmd.sessions.title": "Sessions (list + aggregates)",
+  "cmd.openFile.title": "Visualize file (NDJSON/OTel/Cursor/Codex)",
+  "cmd.liveSession.title": "Watch session live (refreshes on change)",
+  "config.tokens.turnBudget": "Fresh tokens (input+output) per turn above which the turn is flagged as expensive.",
+  "config.tokens.agentBudget": "Total tokens of a sub-agent above which it is flagged as expensive.",
+  "config.durationMs.tool": "Milliseconds above which a tool is flagged as slow.",
+  "config.durationMs.agent": "Milliseconds above which a sub-agent is flagged as slow.",
+  "config.baseline.sigma": "Standard deviations above the agent's historical mean to flag it as an outlier."
+}

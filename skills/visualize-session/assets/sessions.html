@@ -20,6 +20,9 @@
   button:hover,select:hover{border-color:var(--acc);}
   button:disabled{opacity:.4;cursor:default;}
   button.primary{background:var(--acc);color:#0b0d11;border-color:var(--acc);font-weight:600;}
+  .langtoggle{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  .langtoggle button{border:0;border-radius:0;padding:5px 9px;background:var(--panel2);color:var(--mut);font-size:11px;}
+  .langtoggle button.on{background:var(--acc);color:#0b0d11;font-weight:600;}
   main{padding:0 22px 28px;}
   section{margin-top:8px;}
   h2{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin:18px 0 8px;}
@@ -53,20 +56,21 @@
 </head>
 <body>
 <header>
-  <h1>Sesiones</h1>
+  <h1 id="h1">Sesiones</h1>
   <div class="sub" id="sub"></div>
   <div class="stats" id="stats"></div>
 </header>
 <div class="bar">
   <input type="search" id="q" placeholder="filtrar por título / id / fuente…" />
-  <label>por página</label>
+  <label id="lblPageSize">por página</label>
   <select id="pagesize"><option>10</option><option selected>50</option><option>100</option></select>
-  <button id="analyze" class="primary" title="Calcula tokens por agente/skill sobre las sesiones del filtro (parsea cada una)">📊 Analizar agregados</button>
+  <button id="analyze" class="primary">📊 Analizar agregados</button>
+  <div class="langtoggle" id="langtoggle"></div>
 </div>
 <main>
   <section id="agg"><h2 id="agg-title">Agregados</h2><div class="agg-grid">
-    <div><h2>Por agente (tokens) · <span style="text-transform:none;font-weight:400">clic → en el tiempo</span></h2><div id="byAgent"></div></div>
-    <div><h2>Por skill (usos)</h2><div id="bySkill"></div></div>
+    <div><h2 id="h2ByAgent"></h2><div id="byAgent"></div></div>
+    <div><h2 id="h2BySkill"></h2><div id="bySkill"></div></div>
   </div>
   <div id="agentDetail" style="display:none;margin-top:14px;border-top:1px solid var(--line);padding-top:12px">
     <div class="adbar">
@@ -79,18 +83,95 @@
 
   <section>
     <table>
-      <thead><tr><th>título</th><th>fuente</th><th>fin</th><th class="num">tokens</th></tr></thead>
+      <thead><tr><th id="thTitle">título</th><th id="thSource">fuente</th><th id="thEnded">fin</th><th class="num" id="thTokens">tokens</th></tr></thead>
       <tbody id="rows"></tbody>
     </table>
     <div class="pager">
       <button id="prev">◀ anterior</button><span id="pginfo"></span><button id="next">siguiente ▶</button>
-      <span class="hint" style="margin-left:auto">clic en una sesión → abre su timeline EN VIVO · la tabla se actualiza sola</span>
+      <span class="hint" id="hint" style="margin-left:auto">clic en una sesión → abre su timeline EN VIVO · la tabla se actualiza sola</span>
     </div>
   </section>
 </main>
 
 <script id="report-data" type="application/json">{"sessions":[]}</script>
 <script>
+// ---- i18n (ES por defecto; auto-detecta y permite toggle ES|EN) ----
+const I18N = {
+  es: {
+    docTitle:'ai-emos — sesiones', h1:'Sesiones', searchPh:'filtrar por título / id / fuente…',
+    perPage:'por página', analyze:'📊 Analizar agregados', reanalyze:'📊 Re-analizar agregados',
+    analyzeTitle:'Calcula tokens por agente/skill sobre las sesiones del filtro (parsea cada una)',
+    analyzing:'Analizando {0}…', aggTitle:'Agregados',
+    byAgent:'Por agente (tokens)', byAgentHint:'clic → en el tiempo', bySkill:'Por skill (usos)',
+    agent:'Agente', agentDot:'Agente · {0}', appearances:'{0} apariciones · {1} {2}',
+    bySession:'por sesión', byDay:'por día', close:'cerrar',
+    thTitle:'título', thSource:'fuente', thEnded:'fin', thTokens:'tokens',
+    noSessions:'Sin sesiones.', prev:'◀ anterior', next:'siguiente ▶',
+    hint:'clic en una sesión → abre su timeline EN VIVO · la tabla se actualiza sola',
+    sessions:'sesiones', filter:'(filtro)', tokensRaw:'tokens (bruto)',
+    pginfo:'{0}–{1} de {2}', pginfoEmpty:'0 de 0', subCount:'{0} sesiones{1}', subInFilter:' · {0} en el filtro',
+    min:'mín', last:'últ', max:'máx', noAgentData:'sin datos para este agente',
+    chTokens:'tokens', chError:'% error', chDuration:'duración', chDurationDay:'duración (total/día)', chRetries:'reintentos',
+    days:'días', daysUnit:'sesiones', colAgent:'agente', colCalls:'llamadas', colTokens:'tokens',
+    colSkill:'skill', colUses:'usos',
+    aggSummary:'Agregados · {0} sesiones · {1} tokens · {2} a revisar',
+  },
+  en: {
+    docTitle:'ai-emos — sessions', h1:'Sessions', searchPh:'filter by title / id / source…',
+    perPage:'per page', analyze:'📊 Analyze aggregates', reanalyze:'📊 Re-analyze aggregates',
+    analyzeTitle:'Computes tokens per agent/skill over the filtered sessions (parses each one)',
+    analyzing:'Analyzing {0}…', aggTitle:'Aggregates',
+    byAgent:'By agent (tokens)', byAgentHint:'click → over time', bySkill:'By skill (uses)',
+    agent:'Agent', agentDot:'Agent · {0}', appearances:'{0} appearances · {1} {2}',
+    bySession:'by session', byDay:'by day', close:'close',
+    thTitle:'title', thSource:'source', thEnded:'ended', thTokens:'tokens',
+    noSessions:'No sessions.', prev:'◀ prev', next:'next ▶',
+    hint:'click a session → opens its LIVE timeline · the table updates itself',
+    sessions:'sessions', filter:'(filter)', tokensRaw:'tokens (raw)',
+    pginfo:'{0}–{1} of {2}', pginfoEmpty:'0 of 0', subCount:'{0} sessions{1}', subInFilter:' · {0} in filter',
+    min:'min', last:'last', max:'max', noAgentData:'no data for this agent',
+    chTokens:'tokens', chError:'% error', chDuration:'duration', chDurationDay:'duration (total/day)', chRetries:'retries',
+    days:'days', daysUnit:'sessions', colAgent:'agent', colCalls:'calls', colTokens:'tokens',
+    colSkill:'skill', colUses:'uses',
+    aggSummary:'Aggregates · {0} sessions · {1} tokens · {2} to review',
+  },
+};
+function resolveLang(){
+  try{ const s=localStorage.getItem('aiEmosLang'); if(s==='es'||s==='en') return s; }catch(e){}
+  if(window.__lang==='es'||window.__lang==='en') return window.__lang;
+  return String(navigator.language||'es').toLowerCase().startsWith('en')?'en':'es';
+}
+let lang = resolveLang();
+const t = (k,...a)=>{ let s=(I18N[lang]&&I18N[lang][k])||I18N.es[k]||k; a.forEach((v,i)=>{s=s.split('{'+i+'}').join(v);}); return s; };
+function renderLangToggle(){
+  const el=document.getElementById('langtoggle'); if(!el) return;
+  el.innerHTML=['es','en'].map(l=>`<button data-l="${l}" class="${l===lang?'on':''}">${l.toUpperCase()}</button>`).join('');
+  el.querySelectorAll('button').forEach(b=>b.onclick=()=>setLang(b.dataset.l));
+}
+function setLang(l){ if(l!==lang){ lang=l; try{localStorage.setItem('aiEmosLang',l);}catch(e){} } document.documentElement.lang=l; applyI18n(); renderLangToggle(); }
+function applyI18n(){
+  document.title=t('docTitle');
+  document.getElementById('h1').textContent=t('h1');
+  document.getElementById('q').placeholder=t('searchPh');
+  document.getElementById('lblPageSize').textContent=t('perPage');
+  const ab=document.getElementById('analyze');
+  ab.textContent= aggD ? t('reanalyze') : t('analyze'); ab.title=t('analyzeTitle');
+  document.getElementById('h2ByAgent').innerHTML=`${t('byAgent')} · <span style="text-transform:none;font-weight:400">${t('byAgentHint')}</span>`;
+  document.getElementById('h2BySkill').textContent=t('bySkill');
+  document.getElementById('adSes').textContent=t('bySession');
+  document.getElementById('adDay').textContent=t('byDay');
+  document.getElementById('adClose').title=t('close');
+  document.getElementById('thTitle').textContent=t('thTitle');
+  document.getElementById('thSource').textContent=t('thSource');
+  document.getElementById('thEnded').textContent=t('thEnded');
+  document.getElementById('thTokens').textContent=t('thTokens');
+  document.getElementById('prev').textContent=t('prev');
+  document.getElementById('next').textContent=t('next');
+  document.getElementById('hint').textContent=t('hint');
+  render();
+  if(aggD) renderAggregate(aggD);
+}
+
 const DATA = JSON.parse(document.getElementById('report-data').textContent);
 const api = window.__vscodeApi || null;
 const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
@@ -108,9 +189,9 @@ function filtered(){
 function headerStats(){
   const rows=filtered();
   const tok=rows.reduce((a,s)=>a+(s.tokens||0),0);
-  document.getElementById('sub').textContent=`${all.length} sesiones${filter?` · ${rows.length} en el filtro`:''}`;
+  document.getElementById('sub').textContent=t('subCount', all.length, filter?t('subInFilter', rows.length):'');
   const st=(b,l)=>`<div class="stat"><b>${b}</b><span>${l}</span></div>`;
-  document.getElementById('stats').innerHTML=st(rows.length,'sesiones'+(filter?' (filtro)':''))+st(fmt(tok),'tokens (bruto)');
+  document.getElementById('stats').innerHTML=st(rows.length, t('sessions')+(filter?' '+t('filter'):''))+st(fmt(tok), t('tokensRaw'));
 }
 function render(){
   headerStats();
@@ -125,12 +206,12 @@ function render(){
       <td><span class="pill">${esc(s.source||'')}</span></td>
       <td>${s.endedAt?esc(s.endedAt.slice(0,16).replace('T',' ')):''}</td>
       <td class="num">${fmt(s.tokens)}</td>
-    </tr>`).join('') : '<tr><td colspan="4" class="empty">Sin sesiones.</td></tr>';
+    </tr>`).join('') : `<tr><td colspan="4" class="empty">${t('noSessions')}</td></tr>`;
   tb.querySelectorAll('tr.row').forEach(tr=>tr.onclick=()=>{
     const s=all.find(x=>x.sessionId===tr.dataset.id);
     if(api&&s) api.postMessage({type:'open', id:s.sessionId, file:s.file, source:s.source});
   });
-  document.getElementById('pginfo').textContent = rows.length ? `${start+1}–${Math.min(start+size,rows.length)} de ${rows.length}` : '0 de 0';
+  document.getElementById('pginfo').textContent = rows.length ? t('pginfo', start+1, Math.min(start+size,rows.length), rows.length) : t('pginfoEmpty');
   document.getElementById('prev').disabled = page<=0;
   document.getElementById('next').disabled = page>=pages-1;
 }
@@ -165,23 +246,23 @@ function spark(pts,getY,fmtY){
   const pl=pts.map((p,i)=>X(i).toFixed(1)+','+Y(getY(p)).toFixed(1)).join(' ');
   const dots=pts.map((p,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(getY(p)).toFixed(1)}" r="2.5" fill="var(--acc)"><title>${esc((p.title||p.sessionId||'')+': '+fmtY(getY(p)))}</title></circle>`).join('');
   return `<svg class="spark" viewBox="0 0 ${w} ${h}"><polyline fill="none" stroke="var(--acc)" stroke-width="1.5" points="${pl}"/>${dots}</svg>`
-    +`<div class="sparkmeta"><span>mín ${fmtY(mn)}</span><span>últ ${fmtY(getY(pts[n-1]))}</span><span>máx ${fmtY(mx)}</span></div>`;
+    +`<div class="sparkmeta"><span>${t('min')} ${fmtY(mn)}</span><span>${t('last')} ${fmtY(getY(pts[n-1]))}</span><span>${t('max')} ${fmtY(mx)}</span></div>`;
 }
 function showAgent(name){
   curAgent=name;
   const raw=(aggD&&aggD.agentTimeline&&aggD.agentTimeline[name])||[];
   const pts=agMode==='day'?byDay(raw):raw;
-  document.getElementById('adTitle').textContent='Agente · '+name;
-  document.getElementById('adSub').textContent=raw.length+' apariciones · '+pts.length+' '+(agMode==='day'?'días':'sesiones');
+  document.getElementById('adTitle').textContent=t('agentDot', name);
+  document.getElementById('adSub').textContent=t('appearances', raw.length, pts.length, agMode==='day'?t('days'):t('daysUnit'));
   const charts=[
-    {t:'tokens',g:p=>p.tokens||0,f:fmt},
-    {t:'% error',g:p=>p.errorRate||0,f:fmtPct},
-    {t:'duración'+(agMode==='day'?' (total/día)':''),g:p=>p.durationMs||0,f:fmtDur},
-    {t:'reintentos',g:p=>p.retries||0,f:v=>String(Math.round(v))},
+    {t:t('chTokens'),g:p=>p.tokens||0,f:fmt},
+    {t:t('chError'),g:p=>p.errorRate||0,f:fmtPct},
+    {t:agMode==='day'?t('chDurationDay'):t('chDuration'),g:p=>p.durationMs||0,f:fmtDur},
+    {t:t('chRetries'),g:p=>p.retries||0,f:v=>String(Math.round(v))},
   ];
   document.getElementById('adCharts').innerHTML = pts.length
     ? charts.map(c=>`<div class="chart"><div class="charth">${c.t}</div>${spark(pts,c.g,c.f)}</div>`).join('')
-    : '<div class="note">sin datos para este agente</div>';
+    : `<div class="note">${t('noAgentData')}</div>`;
   document.getElementById('agentDetail').style.display='';
 }
 function setSeg(){ document.getElementById('adSes').classList.toggle('on',agMode==='session'); document.getElementById('adDay').classList.toggle('on',agMode==='day'); }
@@ -192,17 +273,17 @@ document.getElementById('adClose').onclick=()=>{ curAgent=null; document.getElem
 function renderAggregate(d){
   aggD=d;
   document.getElementById('agg').classList.add('on');
-  document.getElementById('agg-title').textContent=`Agregados · ${d.totals.sessions} sesiones · ${fmt(d.totals.tokens)} tokens · ${d.totals.findings} a revisar`;
+  document.getElementById('agg-title').textContent=t('aggSummary', d.totals.sessions, fmt(d.totals.tokens), d.totals.findings);
   document.getElementById('byAgent').innerHTML=barTable(
     (d.byAgent||[]).map(a=>({...a,_bar:a.tokens})),
-    [{h:'agente',fn:a=>esc(a.name||'?')},{h:'llamadas',k:'calls',num:1},{h:'tokens',fn:a=>fmt(a.tokens),num:1},{h:'',bar:1}],
+    [{h:t('colAgent'),fn:a=>esc(a.name||'?')},{h:t('colCalls'),k:'calls',num:1},{h:t('colTokens'),fn:a=>fmt(a.tokens),num:1},{h:'',bar:1}],
     { rowAttr:a=>'data-agent="'+esc(String(a.name||'').replace(/"/g,''))+'" class="clickable"' });
   document.querySelectorAll('#byAgent tr.clickable').forEach(tr=>tr.onclick=()=>showAgent(tr.dataset.agent));
   if(curAgent){ if(d.agentTimeline && d.agentTimeline[curAgent]) showAgent(curAgent); else { curAgent=null; document.getElementById('agentDetail').style.display='none'; } }
   document.getElementById('bySkill').innerHTML=barTable(
     (d.bySkill||[]).map(s=>({...s,_bar:s.count})),
-    [{h:'skill',fn:s=>esc(s.name)},{h:'usos',k:'count',num:1},{h:'',bar:1}]);
-  const b=document.getElementById('analyze'); b.disabled=false; b.textContent='📊 Re-analizar agregados';
+    [{h:t('colSkill'),fn:s=>esc(s.name)},{h:t('colUses'),k:'count',num:1},{h:'',bar:1}]);
+  const b=document.getElementById('analyze'); b.disabled=false; b.textContent=t('reanalyze');
 }
 
 document.getElementById('pagesize').onchange=e=>{size=+e.target.value;page=0;render();};
@@ -212,7 +293,7 @@ document.getElementById('next').onclick=()=>{page++;render();};
 document.getElementById('analyze').onclick=()=>{
   if(!api) return;
   const ids=filtered().map(s=>s.sessionId);
-  const b=document.getElementById('analyze'); b.disabled=true; b.textContent=`Analizando ${ids.length}…`;
+  const b=document.getElementById('analyze'); b.disabled=true; b.textContent=t('analyzing', ids.length);
   api.postMessage({type:'aggregate', ids});
 };
 // tabla EN VIVO: la extensión empuja filas frescas al cambiar las sesiones.
@@ -223,7 +304,9 @@ window.addEventListener('message', e=>{ const m=e.data; if(!m) return;
   else if(m.type==='sessions') applySessions(m.sessions);
 });
 
-render();
+document.documentElement.lang=lang;
+renderLangToggle();
+applyI18n();
 </script>
 </body>
 </html>
