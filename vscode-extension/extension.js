@@ -174,7 +174,7 @@ async function openTimelineForSession(sess) {
   const core = await loadCore()
   const { adapters, render } = core
   await withProgress(t('parsingSession'), async () => {
-    const trace = render.enrich(await adapters.parse({ session: sess.file || sess.sessionId }), evalOptions(core))
+    const trace = render.enrich(await adapters.parse({ session: sess.file || sess.sessionId, adapter: sess.source }), evalOptions(core))
     const label = sess.title || sess.sessionId
     openTimelineReport(
       trace,
@@ -194,7 +194,7 @@ async function openLiveSession(sess) {
   const ref = sess.file || sess.sessionId
   const ev = evalOptions(core)
   await withProgress(t('openingLive'), async () => {
-    const trace = render.enrich(await adapters.parse({ session: ref }), ev)
+    const trace = render.enrich(await adapters.parse({ session: ref, adapter: sess.source }), ev)
     const label = (sess.title || sess.sessionId) + ' · ' + t('live')
     const panel = openTimelineReport(
       trace,
@@ -202,7 +202,7 @@ async function openLiveSession(sess) {
       `session-timeline-${sess.sessionId}.html`,
       `session-findings-${sess.sessionId}.html`,
     )
-    const closer = await live.watchSession({ session: ref, ...ev }, (t, info) => {
+    const closer = await live.watchSession({ session: ref, adapter: sess.source, ...ev }, (t, info) => {
       try {
         panel.webview.postMessage({ type: 'data', trace: t })
         const nf = (info && info.newFindings) || []
@@ -235,7 +235,7 @@ async function cmdLiveSession() {
     { placeHolder: t('pickLive') },
   )
   if (!pick) return
-  await openLiveSession({ sessionId: pick.row.sessionId, file: pick.row.file, title: pick.row.title })
+  await openLiveSession({ sessionId: pick.row.sessionId, file: pick.row.file, title: pick.row.title, source: pick.row.source })
 }
 
 // Construye el objeto que consume entity-dashboard.html desde el último agregado:
@@ -261,7 +261,7 @@ function openEntityDashboard(entity, rows = []) {
     // skill, o sesiones que salieron del re-listado) para no abrir sin ruta
     onOpen: m => {
       const r = (rows || []).find(x => x.sessionId === m.id) || {}
-      openLiveSession({ sessionId: m.id, file: m.file || r.file, title: r.title })
+      openLiveSession({ sessionId: m.id, file: m.file || r.file, title: r.title, source: r.source })
     },
   })
 }
@@ -315,7 +315,7 @@ async function cmdSessions() {
     if (msg.type === 'open') {
       const r = rows.find(x => x.sessionId === msg.id) || {}
       // abre la sesión EN VIVO (panel que se refresca al cambiar el archivo)
-      await openLiveSession({ sessionId: msg.id, file: msg.file || r.file, title: r.title })
+      await openLiveSession({ sessionId: msg.id, file: msg.file || r.file, title: r.title, source: msg.source || r.source })
     } else if (msg.type === 'openEntity') {
       // clic en un agente/skill → dashboard de uso en pestaña nueva
       if (!lastDash) return

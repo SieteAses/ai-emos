@@ -7,6 +7,7 @@
  *   ../core                              → ./bundled/core
  *   ../sdk                               → ./bundled/sdk
  *   ../skills/visualize-session/assets   → ./bundled/assets
+ *   ../icon/ai-emos-256.png              → ./bundled/icon.png  (icono del Marketplace)
  *
  * extension.js usa ./bundled/ si existe (ver resolveBase()); en dev (monorepo)
  * cae a ../core y ../skills/.../assets.
@@ -41,5 +42,9 @@ copyDir(path.join(REPO, 'core'), path.join(OUT, 'core'))
 copyDir(path.join(REPO, 'sdk'), path.join(OUT, 'sdk'))
 copyDir(path.join(REPO, 'skills', 'visualize-session', 'assets'), path.join(OUT, 'assets'))
 
+// icono del Marketplace (vsce exige PNG ≥128×128; el SVG vive en ../icon/)
+const iconSrc = path.join(REPO, 'icon', 'ai-emos-256.png')
+if (fs.existsSync(iconSrc)) fs.copyFileSync(iconSrc, path.join(OUT, 'icon.png'))
+
 console.log('bundle listo →', path.relative(HERE, OUT))
-console.log('  core/, sdk/, assets/ copiados. La extensión los usará en el .vsix.')
+console.log('  core/, sdk/, assets/, icon.png copiados. La extensión los usará en el .vsix.')

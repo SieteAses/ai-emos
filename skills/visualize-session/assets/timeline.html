@@ -26,6 +26,18 @@
   .langtoggle{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;flex:none;}
   .langtoggle button{border:0;border-radius:0;padding:4px 8px;background:var(--panel2);color:var(--mut);font-size:11px;cursor:pointer;}
   .langtoggle button.on{background:var(--acc);color:#0b0d11;font-weight:600;}
+  /* resumen ampliado: botón "ver más" + dropdown con toda la info de la sesión */
+  .morewrap{position:relative;flex:none;}
+  /* mismo box que los .stat: dos líneas (valor/flecha + etiqueta), mismo alto */
+  .morebtn{flex:none;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 9px;text-align:center;color:var(--fg);cursor:pointer;white-space:nowrap;font:inherit;}
+  .morebtn b{font-size:14px;display:block;line-height:1.2;} .morebtn span{color:var(--mut);font-size:10px;display:block;}
+  .morebtn:hover{border-color:var(--acc);} .morebtn.on{border-color:var(--acc);}
+  .morepanel{position:absolute;top:calc(100% + 8px);right:0;z-index:60;background:var(--panel);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 34px rgba(0,0,0,.45);padding:14px 16px;min-width:340px;max-width:min(620px,92vw);}
+  .morepanel[hidden]{display:none;}
+  .mp-h{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);margin:0 0 9px;}
+  .mp-stats{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;}
+  .mp-meta{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12px;margin:0;}
+  .mp-meta dt{color:var(--mut);white-space:nowrap;} .mp-meta dd{margin:0;color:var(--fg);word-break:break-word;}
   .layout{display:grid;grid-template-columns:minmax(300px,34%) 1fr;}
   #left{border-right:1px solid var(--line);height:calc(100vh - var(--hh));overflow:auto;padding:14px 8px 60px;}
   #right{height:calc(100vh - var(--hh));overflow:auto;padding:18px 22px 60px;}
@@ -159,6 +171,7 @@
     <div class="sub" id="sub"></div>
   </div>
   <div class="stats" id="stats"></div>
+  <div class="morewrap"><button class="morebtn" id="morebtn" aria-expanded="false"></button><div class="morepanel" id="morepanel" hidden></div></div>
   <div class="langtoggle" id="langtoggle"></div>
 </header>
 <div class="layout">
@@ -185,7 +198,9 @@ const I18N = {
     source:'fuente', models:'modelos', na:'n/d',
     stSteps:'pasos', stTokens:'tokens', stTurns:'turnos', stAgents:'sub-agentes', stTools:'herramientas',
     stSkills:'skills', stDecisions:'decisiones', stReview:'a revisar', stDuration:'duración',
-    tokensTip:'La granularidad real de tokens es por turno de LLM (no por herramienta). Mira el desglose por turno en el panel de resumen.',
+    tokensTip:'El titular son tokens FRESCOS (input+output): lo que el modelo generó/ingirió nuevo. El total bruto incluye la caché re-leída en cada turno (barata, pero infla la cifra).',
+    tokFresh:'frescos (input+output)', tokTotal:'total bruto', tokCacheRead:'caché re-leída', tokCacheCreate:'caché creada',
+    moreBtn:'ver más', lessBtn:'ver menos', sessionSummary:'Resumen de la sesión', mSpan:'periodo', mId:'id', mCwd:'carpeta', mTokens:'tokens',
     calls:'llamadas', back:'← volver', home:'inicio', noIO:'sin I/O',
     callGraph:'grafo de llamadas ({0})', subCalls:'sub-llamadas ({0})', subAgentPrompt:'prompt del sub-agente',
     callsLabel:'llamadas', openSubAgent:'abrir sub-agente →',
@@ -212,7 +227,9 @@ const I18N = {
     source:'source', models:'models', na:'n/a',
     stSteps:'steps', stTokens:'tokens', stTurns:'turns', stAgents:'sub-agents', stTools:'tools',
     stSkills:'skills', stDecisions:'decisions', stReview:'to review', stDuration:'duration',
-    tokensTip:'Real token granularity is per LLM turn (not per tool). See the per-turn breakdown in the summary panel.',
+    tokensTip:'The headline is FRESH tokens (input+output): what the model actually generated/ingested. The raw total includes cached context re-read each turn (cheap, but it inflates the number).',
+    tokFresh:'fresh (input+output)', tokTotal:'raw total', tokCacheRead:'cache re-read', tokCacheCreate:'cache created',
+    moreBtn:'see more', lessBtn:'see less', sessionSummary:'Session summary', mSpan:'span', mId:'id', mCwd:'folder', mTokens:'tokens',
     calls:'calls', back:'← back', home:'home', noIO:'no I/O',
     callGraph:'call graph ({0})', subCalls:'sub-calls ({0})', subAgentPrompt:'sub-agent prompt',
     callsLabel:'calls', openSubAgent:'open sub-agent →',
@@ -268,6 +285,10 @@ const lt = iso => { if(!iso) return ''; const d=new Date(iso); return isNaN(d)?'
 const ldt = iso => { if(!iso) return ''; const d=new Date(iso); return isNaN(d)?'':d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())+' '+lt(iso); };
 const ldtm = iso => { const s=ldt(iso); return s?s.slice(0,16):''; };
 const role2 = r => (I18N[lang].role[r]||I18N.es.role[r]||'');
+// tokens FRESCOS de un paso (input+output); el `total` incluye cacheRead re-leído
+// por turno y dispararía la cifra. Los sub-agentes muestran su rollup (totalTokens).
+const ftok = tk => tk ? ((tk.input||0)+(tk.output||0)) : 0;
+const stepTok = s => (s.kind==='agent'&&s.agent) ? (s.agent.totalTokens||0) : ftok(s.tokens);
 const kc = k => css('--'+k) || css('--event');
 const short = s => { s=String(s||''); return s.length>16?s.slice(0,15)+'…':s; };
 
@@ -323,6 +344,15 @@ function decisionBlock(d){if(!d)return'';let h=field(t('question'),`<div class="
 function statsLine(st){const p=[];if(st.toolUseCount)p.push(st.toolUseCount+' tools');if(st.readCount)p.push(st.readCount+' reads');if(st.bashCount)p.push(st.bashCount+' bash');if(st.editFileCount)p.push(st.editFileCount+' edits');if(st.linesAdded||st.linesRemoved)p.push(`+${st.linesAdded||0}/-${st.linesRemoved||0}`);return p.join(' · ');}
 
 // ---- header / legend / timeline ----
+let MORE_OPEN=false;     // estado del dropdown "ver más" (se conserva en re-render en vivo)
+let MORE_WIRED=false;    // listeners globales (Esc / clic fuera) instalados una sola vez
+function setMore(open){
+  MORE_OPEN=open;
+  const p=document.getElementById('morepanel'), b=document.getElementById('morebtn');
+  if(!p||!b) return;
+  p.hidden=!open; b.classList.toggle('on',open); b.setAttribute('aria-expanded',String(open));
+  b.innerHTML=`<b>${open?'▴':'▾'}</b><span>${open?t('lessBtn'):t('moreBtn')}</span>`;
+}
 function header(){
   document.getElementById('title').textContent = DATA.title || (t('sessionPrefix')+' '+(DATA.sessionId||''));
   const s=DATA.summary||{}; const span=DATA.startedAt?`${ldtm(DATA.startedAt)} → ${ldtm(DATA.endedAt)}`:'';
@@ -330,7 +360,24 @@ function header(){
   const sc=s.stepCounts||{}, st=(b,l,t2)=>`<div class="stat"${t2?` title="${esc(t2)}"`:''}><b>${b}</b><span>${l}</span></div>`;
   const total=Object.values(sc).reduce((a,b)=>a+b,0);
   const nTurns=(s.turns||[]).length, nSkills=(s.skills||[]).length;
-  document.getElementById('stats').innerHTML=st(fmt(total),t('stSteps'))+st(fmt((s.tokens||{}).total||0),t('stTokens'),t('tokensTip'))+st(nTurns,t('stTurns'))+st(sc.agent||0,t('stAgents'))+st(sc.tool_call||0,t('stTools'))+(nSkills?st(nSkills,t('stSkills')):'')+st((s.decisions||[]).length,t('stDecisions'))+st((s.findings||[]).length,t('stReview'))+st(ms(s.durationMs)||t('na'),t('stDuration'));
+  // titular de tokens = FRESCOS (input+output); el desglose (total bruto + caché) va en el tooltip.
+  const TK=s.tokens||{}, fresh=(TK.input||0)+(TK.output||0);
+  const tokTip=t('tokensTip')+(TK.total&&TK.total!==fresh?`\n\n${t('tokFresh')}: ${fmt(fresh)}\n${t('tokTotal')}: ${fmt(TK.total)}\n${t('tokCacheRead')}: ${fmt(TK.cacheRead||0)}\n${t('tokCacheCreate')}: ${fmt(TK.cacheCreate||0)}`:'');
+  // ARRIBA: solo lo esencial — pasos, tokens, duración.
+  document.getElementById('stats').innerHTML=st(fmt(total),t('stSteps'))+st(fmt(fresh),t('stTokens'),tokTip)+st(ms(s.durationMs)||t('na'),t('stDuration'));
+  // "VER MÁS": dropdown con TODA la info de la sesión (resto de stats + metadatos).
+  const allChips=st(fmt(total),t('stSteps'))+st(fmt(fresh),t('stTokens'),tokTip)+st(nTurns,t('stTurns'))+st(sc.agent||0,t('stAgents'))+st(sc.tool_call||0,t('stTools'))+(nSkills?st(nSkills,t('stSkills')):'')+st((s.decisions||[]).length,t('stDecisions'))+st((s.findings||[]).length,t('stReview'))+st(ms(s.durationMs)||t('na'),t('stDuration'));
+  const tokLine=`${t('tokFresh')} ${fmt(fresh)}`+(TK.total&&TK.total!==fresh?` · ${t('tokTotal')} ${fmt(TK.total)} · ${t('tokCacheRead')} ${fmt(TK.cacheRead||0)} · ${t('tokCacheCreate')} ${fmt(TK.cacheCreate||0)}`:'');
+  const meta=[[t('source'),DATA.source||t('na')],[t('models'),(s.models||[]).join(', ')||t('na')],[t('mSpan'),span||t('na')],[t('mTokens'),tokLine],[t('mId'),DATA.sessionId||t('na')]];
+  if(DATA.cwd) meta.push([t('mCwd'),DATA.cwd]);
+  document.getElementById('morepanel').innerHTML=`<div class="mp-h">${t('sessionSummary')}</div><div class="mp-stats">${allChips}</div><dl class="mp-meta">${meta.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+  setMore(MORE_OPEN);
+  document.getElementById('morebtn').onclick=e=>{ e.stopPropagation(); setMore(!MORE_OPEN); };
+  if(!MORE_WIRED){
+    MORE_WIRED=true;
+    document.addEventListener('click',e=>{ if(MORE_OPEN && !e.target.closest('.morewrap')) setMore(false); });
+    document.addEventListener('keydown',e=>{ if(e.key==='Escape' && MORE_OPEN) setMore(false); });
+  }
 }
 function legend(){
   const sc=(DATA.summary&&DATA.summary.stepCounts)||{};
@@ -340,7 +387,7 @@ function timeline(){
   const tl=document.getElementById('timeline'); tl.innerHTML='';
   (DATA.steps||[]).forEach((s,i)=>{
     const it=document.createElement('div'); it.className='tlitem '+(i%2?'right':'left'); it.style.setProperty('--c',kc(s.kind));
-    const tokN=s.kind==='agent'&&s.agent?(s.agent.totalTokens||0):(s.tokens&&s.tokens.total||0);
+    const tokN=stepTok(s);
     const tok=tokN?`<span class="tok">${fmt(tokN)} tok</span>`:'';
     const ts=lt(s.timestamp);
     const calls=s.kind==='agent'&&s.agent?`<span class="tok">${(s.agent.stats&&s.agent.stats.toolUseCount)||(s.agent.steps?s.agent.steps.length:0)} ${t('calls')}</span>`:'';
@@ -368,7 +415,7 @@ function select(uid){
 }
 function detailHeader(s,crumbs){
   const nav = crumbs.length?`<button class="back" id="back">${t('back')}</button>`:`<button class="home" id="home">${t('home')}</button>`;
-  const tokN=s.kind==='agent'&&s.agent?(s.agent.totalTokens||0):(s.tokens&&s.tokens.total||0);
+  const tokN=stepTok(s);
   return `<div class="d-h"><span class="kdot" style="background:${kc(s.kind)}"></span><span class="d-ttl">${esc(s.label||kindLabel(s.kind))}</span>${nav}</div>
     <div class="d-meta">${[s.role?role2(s.role):'',ldt(s.timestamp),tokN?fmt(tokN)+' tok':'',s.durationMs?ms(s.durationMs):''].filter(Boolean).join(' · ')}</div>`;
 }
@@ -383,7 +430,7 @@ function agentDetail(s,crumbs){
   const graph=subs.map((c,i)=>`<div class="hitem ${i%2?'down':'up'}" style="--c:${kc(c.kind)}">
       <div class="hcard" data-i="${i}">
         <div class="tlcard-h"><span class="kdot" style="background:${kc(c.kind)}"></span><span class="ttl">${esc(short(c.label||kindLabel(c.kind)))}</span></div>
-        <div class="tlcard-m"><span>#${i+1}</span>${c.timestamp?`<span>${lt(c.timestamp)}</span>`:''}${c.tokens&&c.tokens.total?`<span class="tok">${fmt(c.tokens.total)} tok</span>`:''}</div>
+        <div class="tlcard-m"><span>#${i+1}</span>${c.timestamp?`<span>${lt(c.timestamp)}</span>`:''}${stepTok(c)?`<span class="tok">${fmt(stepTok(c))} tok</span>`:''}</div>
       </div></div>`).join('');
   const list=subs.map((c,i)=>subNode(c,i)).join('');
   const st=s.agent.stats?statsLine(s.agent.stats):'';
@@ -405,7 +452,7 @@ function agentDetail(s,crumbs){
 function subNode(c,i){
   const isAgent=c.kind==='agent'&&c.agent&&c.agent.steps&&c.agent.steps.length;
   const body=(c.kind==='decision'?decisionBlock(c.decision):'')+ioBlock(c);
-  const tok=c.tokens&&c.tokens.total?`<span class="tok">${fmt(c.tokens.total)}</span>`:'';
+  const tok=stepTok(c)?`<span class="tok">${fmt(stepTok(c))}</span>`:'';
   return `<div class="subnode ${c.flags&&c.flags.length?'flagged':''}" data-i="${i}" id="sub-${i}">
     <div class="subrow"><span class="caret">▶</span><span class="kdot" style="background:${kc(c.kind)}"></span><span class="sl">${esc(c.label||kindLabel(c.kind))}</span>${isAgent?`<span class="drill">${t('openSubAgent')}</span>`:''}<span class="meta">${tok}${c.timestamp?`<span>${lt(c.timestamp)}</span>`:''}</span></div>
     <div class="subbody">${body||`<div class="empty">${t('noIO')}</div>`}</div></div>`;
