@@ -8,6 +8,26 @@ on:
   workflow_dispatch:
 
 jobs:
+  lint:
+    name: Formato (Prettier) + Lint (ESLint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalar dependencias de dev
+        run: npm ci
+
+      - name: Formato (prettier --check)
+        run: npm run format:check
+
+      - name: Lint (eslint)
+        run: npm run lint
+
   check:
     name: Sintaxis + manifests + empaquetado
     runs-on: ubuntu-latest
