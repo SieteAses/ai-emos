@@ -188,11 +188,9 @@ function quickMeta(file) {
       if (key && seenReq.has(key)) continue
       if (key) seenReq.add(key)
       const u = e.message.usage
-      tokens +=
-        (u.input_tokens || 0) +
-        (u.cache_creation_input_tokens || 0) +
-        (u.cache_read_input_tokens || 0) +
-        (u.output_tokens || 0)
+      // tokens FRESCOS (input+output) para la lista: el cache_read se re-cuenta
+      // cada turno y dispararía el total a millones (ver "Honestidad de tokens").
+      tokens += (u.input_tokens || 0) + (u.output_tokens || 0)
     }
   }
   return { title, firstTs, lastTs, tokens, cwd }
@@ -635,8 +633,10 @@ function looksLikeClaude(file) {
     const first = fs.readFileSync(file, 'utf8').split('\n').find(l => l.trim())
     if (!first) return false
     const o = JSON.parse(first)
-    // transcripts de Claude Code: traen type/uuid/sessionId y NO el `kind` del NDJSON
-    return !!(o && (o.sessionId || o.uuid || o.type) && o.kind === undefined)
+    // transcripts de Claude Code: traen type/uuid/sessionId y NO el `kind` del NDJSON.
+    // `o.data === undefined` excluye el transcripto de Copilot ({type,data,id,parentId}),
+    // que también trae `type` sin `kind`.
+    return !!(o && (o.sessionId || o.uuid || o.type) && o.kind === undefined && o.data === undefined)
   } catch {
     return false
   }
