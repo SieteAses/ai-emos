@@ -395,6 +395,7 @@ export function aggregate(traces) {
   const agentTotals = new Map()
   const skillTotals = new Map()
   const agentTimeline = new Map() // nombre -> [puntos por sesión] (serie temporal)
+  const skillTimeline = new Map() // nombre -> [puntos por sesión] (serie temporal de usos)
   let decisions = 0
   let findings = 0
   let tokens = 0
@@ -451,6 +452,10 @@ export function aggregate(traces) {
     }
     for (const s of t.summary?.skills || []) {
       skillTotals.set(s.name, (skillTotals.get(s.name) || 0) + s.count)
+      // serie temporal: un punto por (skill, sesión) con sus usos en esa sesión
+      const arr = skillTimeline.get(s.name) || []
+      arr.push({ sessionId: t.sessionId, title: t.title, startedAt: t.startedAt, count: s.count })
+      skillTimeline.set(s.name, arr)
     }
     return {
       source: t.source,
@@ -508,6 +513,13 @@ export function aggregate(traces) {
     // serie temporal por agente, ordenada cronológicamente
     agentTimeline: Object.fromEntries(
       [...agentTimeline.entries()].map(([name, pts]) => [
+        name,
+        pts.sort((a, b) => (a.startedAt || '').localeCompare(b.startedAt || '')),
+      ]),
+    ),
+    // serie temporal por skill (usos), ordenada cronológicamente
+    skillTimeline: Object.fromEntries(
+      [...skillTimeline.entries()].map(([name, pts]) => [
         name,
         pts.sort((a, b) => (a.startedAt || '').localeCompare(b.startedAt || '')),
       ]),

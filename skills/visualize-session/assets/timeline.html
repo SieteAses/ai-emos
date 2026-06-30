@@ -118,6 +118,14 @@
   .mdwrap code{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;}
   pre.code{background:#05070a;border:1px solid var(--line);border-radius:6px;padding:8px 10px;margin:.4em 0;overflow:auto;white-space:pre-wrap;word-break:break-word;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:#d6deea;}
   .kv{margin:5px 0;} .kv .kk{color:var(--acc);font-size:11px;font-weight:600;} .kv .kvs{margin-left:6px;} .kv .kvv{margin-top:3px;}
+  /* gráficos del overview (herramientas/tokens por turno) */
+  .chartcard{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin:6px 0;}
+  .charttitle{font-size:12px;color:var(--mut);margin-bottom:4px;display:flex;align-items:center;gap:6px;}
+  .charttitle .qm{cursor:help;border:1px solid var(--line);border-radius:50%;width:13px;height:13px;line-height:11px;text-align:center;font-size:9px;color:var(--mut);}
+  .chartsvg{display:block;width:100%;height:auto;}
+  .pierow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
+  .pie{flex:none;width:220px;height:220px;}
+  .chartlegend{display:flex;flex-wrap:wrap;gap:6px 12px;}
   .diff{border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:.4em 0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;}
   .diff .dl{padding:1px 10px;white-space:pre-wrap;word-break:break-word;}
   .diff .del{background:rgba(255,107,107,.12);color:#ff9d9d;} .diff .add{background:rgba(126,224,192,.12);color:#9af3d2;}
@@ -181,6 +189,11 @@ const I18N = {
     overviewHint:'Selecciona un paso en la línea de tiempo para ver su I/O. Las cards de <b>sub-agente</b> abren su grafo de llamadas y el detalle de cada sub-llamada. Los <b>tramos a revisar</b> están en un reporte aparte.',
     composition:'composición', skillsUsed:'skills usadas', subAgentsByTokens:'sub-agentes por tokens',
     tokensPerTurn:'tokens por turno · qué corrió cada uno', tokensPerTurnTip:'Los tokens del log se reportan por turno de LLM, no por herramienta individual.',
+    chToolsCount:'herramientas por turno (nº de usos)', chToolsTokens:'tokens por herramienta (proporción)',
+    chTokensTurn:'tokens por turno (frescos: input+output)',
+    chToolsTokensTip:'Aproximado: el log reporta tokens por turno, no por herramienta. Se reparten proporcionalmente entre las herramientas que corrió cada turno.',
+    chTokensTurnTip:'Tokens frescos generados en cada turno (input+output); excluye la relectura de contexto cacheado.',
+    axisTurn:'turno', catSub:'subagente', catSkill:'skill', catOtros:'otras', turnActivity:'actividad por turno',
     turn:'Turno', dismiss:'descartar', findingsBadge:'⚑ Tramos a revisar ({0})', segment:'tramo',
     role:{user:'usuario',assistant:'asistente',system:'sistema',tool:'tool'},
     kind:{message:'mensaje',thinking:'razonamiento',llm_call:'llamada LLM',tool_call:'herramienta',agent:'sub-agente',skill:'skill',decision:'decisión',event:'evento'},
@@ -203,6 +216,11 @@ const I18N = {
     overviewHint:'Select a step in the timeline to see its I/O. <b>Sub-agent</b> cards open their call graph and the detail of each sub-call. The <b>segments to review</b> are in a separate report.',
     composition:'composition', skillsUsed:'skills used', subAgentsByTokens:'sub-agents by tokens',
     tokensPerTurn:'tokens per turn · what each one ran', tokensPerTurnTip:'Log tokens are reported per LLM turn, not per individual tool.',
+    chToolsCount:'tools per turn (use count)', chToolsTokens:'tokens by tool (share)',
+    chTokensTurn:'tokens per turn (fresh: input+output)',
+    chToolsTokensTip:'Approximate: the log reports tokens per turn, not per tool. They are split proportionally across the tools each turn ran.',
+    chTokensTurnTip:'Fresh tokens generated each turn (input+output); excludes re-reading cached context.',
+    axisTurn:'turn', catSub:'subagent', catSkill:'skill', catOtros:'other', turnActivity:'per-turn activity',
     turn:'Turn', dismiss:'dismiss', findingsBadge:'⚑ Segments to review ({0})', segment:'segment',
     role:{user:'user',assistant:'assistant',system:'system',tool:'tool'},
     kind:{message:'message',thinking:'reasoning',llm_call:'LLM call',tool_call:'tool',agent:'sub-agent',skill:'skill',decision:'decision',event:'event'},
@@ -331,7 +349,11 @@ function timeline(){
 
 // ---- selección / detalle ----
 let SELECTED=null; // uid de la card seleccionada (se preserva al re-renderizar en vivo)
+let GRAPH_SEL=null;          // índice del nodo resaltado en el grafo horizontal (.hcard.sel)
+const OPEN_SUBS=new Set();   // índices de sub-llamadas expandidas (.subnode.open)
 function select(uid){
+  // cada selección fresca arranca limpia; el modo en vivo reaplica desde copias capturadas
+  GRAPH_SEL=null; OPEN_SUBS.clear();
   SELECTED=uid;
   document.querySelectorAll('.tlcard.active').forEach(e=>e.classList.remove('active'));
   const card=document.querySelector(`.tlcard[data-uid="${uid}"]`); if(card)card.classList.add('active');
@@ -386,22 +408,34 @@ function wireAgent(s,crumbs){
   const d=document.getElementById('detail');
   // marca el nodo i en el grafo y lo centra horizontalmente (sin saltar en vertical)
   const selGraph=i=>{
+    GRAPH_SEL=i;
     d.querySelectorAll('.hcard.sel').forEach(e=>e.classList.remove('sel'));
     const hc=d.querySelector('.hcard[data-i="'+i+'"]');
     if(hc){ hc.classList.add('sel'); hc.scrollIntoView({behavior:'smooth',inline:'center',block:'nearest'}); }
   };
   d.querySelectorAll('.hcard').forEach(ch=>ch.onclick=()=>{
     const i=+ch.dataset.i; selGraph(i);
-    const sn=d.querySelector('#sub-'+i); if(sn){ sn.classList.add('open'); sn.scrollIntoView({behavior:'smooth',block:'start'}); flash(sn); }
+    const sn=d.querySelector('#sub-'+i); if(sn){ sn.classList.add('open'); OPEN_SUBS.add(i); sn.scrollIntoView({behavior:'smooth',block:'start'}); flash(sn); }
   });
   d.querySelectorAll('.subnode').forEach(sn=>{
     const i=+sn.dataset.i;
     sn.querySelector('.subrow').onclick=e=>{
       if(e.target.classList.contains('drill')){ detailFor(s.agent.steps[i], crumbs.concat([s])); document.getElementById('right').scrollTop=0; return; }
       sn.classList.toggle('open');
+      if(sn.classList.contains('open')) OPEN_SUBS.add(i); else OPEN_SUBS.delete(i);
       selGraph(i);
     };
   });
+}
+// reaplica el estado del detalle (nodo del grafo + sub-llamadas abiertas) tras
+// re-renderizar en vivo, sin scrollIntoView para no pisar el scroll restaurado.
+function applyDetailState(){
+  const d=document.getElementById('detail'); if(!d) return;
+  OPEN_SUBS.forEach(i=>{ const sn=d.querySelector('#sub-'+i); if(sn) sn.classList.add('open'); });
+  if(GRAPH_SEL!=null){
+    d.querySelectorAll('.hcard.sel').forEach(e=>e.classList.remove('sel'));
+    const hc=d.querySelector('.hcard[data-i="'+GRAPH_SEL+'"]'); if(hc) hc.classList.add('sel');
+  }
 }
 function wireNav(crumbs){
   const back=document.getElementById('back'); if(back) back.onclick=()=>{ const prev=crumbs[crumbs.length-1]; detailFor(prev, crumbs.slice(0,-1)); document.getElementById('right').scrollTop=0; };
@@ -409,9 +443,104 @@ function wireNav(crumbs){
 }
 function flash(el){el.style.outline='2px solid '+css('--acc');setTimeout(()=>el.style.outline='',1200);}
 
+// ---- gráficos del overview: herramientas / tokens por turno ----
+const CHART_PAL=['#6ea8fe','#c9a0ff','#6ee7ff','#ffb86b','#ff7eb6','#7ee787','#f2cc60','#ff9492','#a5d6ff','#d2a8ff'];
+function catKeyOf(s){
+  if(s.kind==='tool_call') return (String(s.label||'').replace(/^tool:/,''))||'tool';
+  if(s.kind==='agent') return '@sub';
+  if(s.kind==='skill') return '@skill';
+  return null;
+}
+function toolCatLabel(k){ return k==='@sub'?t('catSub'):k==='@skill'?t('catSkill'):k==='@otros'?t('catOtros'):k; }
+// agrupa los steps top-level por turno: tokens frescos (input+output) + conteo por categoría
+function turnsFromSteps(){
+  const map=new Map();
+  for(const s of (DATA.steps||[])){
+    if(s.turn==null) continue;
+    let e=map.get(s.turn); if(!e){ e={turn:s.turn,fresh:0,cats:{}}; map.set(s.turn,e); }
+    if(s.tokens){ const fr=(s.tokens.input||0)+(s.tokens.output||0); if(fr>e.fresh) e.fresh=fr; }
+    const k=catKeyOf(s); if(k) e.cats[k]=(e.cats[k]||0)+1;
+  }
+  return [...map.values()].sort((a,b)=>a.turn-b.turn);
+}
+// categorías ordenadas por nº de usos; lo que sobra del top se agrupa en '@otros'
+function rankCats(turns, MAX=9){
+  const tot={}; turns.forEach(e=>Object.entries(e.cats).forEach(([k,n])=>tot[k]=(tot[k]||0)+n));
+  let keys=Object.keys(tot).sort((a,b)=>tot[b]-tot[a]); let overflow=new Set();
+  if(keys.length>MAX){ overflow=new Set(keys.slice(MAX-1)); keys=keys.slice(0,MAX-1).concat(['@otros']); }
+  const colorOf={}; let ci=0;
+  keys.forEach(k=>{ colorOf[k]= k==='@sub'?css('--agent'): k==='@skill'?css('--skill'): k==='@otros'?css('--event'): CHART_PAL[ci++ % CHART_PAL.length]; });
+  const norm=turns.map(e=>{ const cats={}; Object.entries(e.cats).forEach(([k,n])=>{ const kk=overflow.has(k)?'@otros':k; cats[kk]=(cats[kk]||0)+n; }); return {turn:e.turn,fresh:e.fresh,cats}; });
+  return {keys,colorOf,turns:norm};
+}
+// ticks "nice": [0..top] en ~`target` pasos redondos (20k, 50, 0.2, …)
+function niceTicks(max, target, intStep){
+  if(!(max>0)) return [0,1];
+  const raw=max/(target||5), mag=Math.pow(10,Math.floor(Math.log10(raw))), nrm=raw/mag;
+  let step=(nrm<1.5?1:nrm<3?2:nrm<7?5:10)*mag;
+  if(intStep) step=Math.max(1,Math.round(step)); // datos enteros (conteos): nada de pasos 0.5
+  const top=Math.ceil(max/step)*step, out=[];
+  for(let i=0; i*step<=top+step*1e-6; i++) out.push(+(i*step).toFixed(10)); // i*step + toFixed: sin drift float
+  return out;
+}
+// índices equiespaciados sobre n puntos (incluye extremos), hasta `maxT` rótulos
+function tickIdx(n, maxT){
+  if(n<=1) return [0]; maxT=maxT||8;
+  const want=n<=maxT?n:maxT, out=[];
+  for(let i=0;i<want;i++) out.push(Math.round(i*(n-1)/(want-1)));
+  return [...new Set(out)];
+}
+// gráfico de líneas (1 o N series) con ejes, grilla punteada "nice" y rótulos de turno
+function lineChart(turns, keys, colorOf, getY, fmtY){
+  const w=560,h=156,padL=46,padR=14,padT=10,padB=26, n=turns.length; if(!n) return '';
+  const pw=w-padL-padR, ph=h-padT-padB, FS=8;
+  let mx=0, intY=true; turns.forEach(e=>keys.forEach(k=>{ const v=getY(e,k); if(v>mx) mx=v; if(!Number.isInteger(v)) intY=false; }));
+  const yt=niceTicks(mx,5,intY), top=yt[yt.length-1]||1;
+  const X=i=> n===1? padL+pw/2 : padL+i*pw/(n-1);
+  const Y=v=> (padT+ph)-(v/top)*ph;
+  const ax='var(--line)', lb='var(--mut)';
+  const grid=yt.map(v=>`<line x1="${padL}" y1="${Y(v).toFixed(1)}" x2="${w-padR}" y2="${Y(v).toFixed(1)}" stroke="${ax}" stroke-dasharray="2 3" opacity=".5"/><text x="${padL-5}" y="${(Y(v)+3).toFixed(1)}" text-anchor="end" fill="${lb}" font-size="${FS}">${esc(fmtY(v))}</text>`).join('');
+  const yA=`<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+ph}" stroke="${ax}"/>`;
+  const xA=`<line x1="${padL}" y1="${padT+ph}" x2="${w-padR}" y2="${padT+ph}" stroke="${ax}"/>`;
+  const series=keys.map(k=>{ const pts=turns.map((e,i)=>X(i).toFixed(1)+','+Y(getY(e,k)).toFixed(1)).join(' '); return `<polyline fill="none" stroke="${colorOf[k]}" stroke-width="1.5" points="${pts}"/>`; }).join('');
+  const xl=tickIdx(n,8).map(i=>{ const x=X(i), anc=i===0?'start':i===n-1?'end':'middle';
+    return `<line x1="${x.toFixed(1)}" y1="${(padT+ph).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(padT+ph+3).toFixed(1)}" stroke="${ax}"/><text x="${x.toFixed(1)}" y="${h-9}" text-anchor="${anc}" fill="${lb}" font-size="${FS}">${esc(String(turns[i].turn))}</text>`; }).join('');
+  const cap=`<text x="${(padL+pw/2).toFixed(1)}" y="${h-1}" text-anchor="middle" fill="${lb}" font-size="${FS}" opacity=".65">${t('axisTurn')}</text>`;
+  return `<svg class="chartsvg" viewBox="0 0 ${w} ${h}">${grid}${yA}${xA}${series}${xl}${cap}</svg>`;
+}
+// tokens por categoría: reparto proporcional del coste fresco de cada turno
+function tokensByCat(turns, keys){
+  const tok={}; keys.forEach(k=>tok[k]=0);
+  turns.forEach(e=>{ const tc=Object.values(e.cats).reduce((a,b)=>a+b,0); if(!tc||!e.fresh) return; Object.entries(e.cats).forEach(([k,n])=>{ tok[k]=(tok[k]||0)+e.fresh*n/tc; }); });
+  return tok;
+}
+function pieChart(keys, colorOf, vals){
+  const pos=keys.filter(k=>(vals[k]||0)>0); const total=pos.reduce((a,k)=>a+vals[k],0); if(!total) return '';
+  const cx=70,cy=70,r=60;
+  if(pos.length===1) return `<svg viewBox="0 0 140 140" class="pie"><circle cx="${cx}" cy="${cy}" r="${r}" fill="${colorOf[pos[0]]}"><title>${esc(toolCatLabel(pos[0]))}: 100%</title></circle></svg>`;
+  let ang=-Math.PI/2; const segs=pos.map(k=>{ const v=vals[k]; const a2=ang+2*Math.PI*v/total; const x1=cx+r*Math.cos(ang),y1=cy+r*Math.sin(ang),x2=cx+r*Math.cos(a2),y2=cy+r*Math.sin(a2); const large=(a2-ang)>Math.PI?1:0; const p=`<path d="M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${large} 1 ${x2.toFixed(1)},${y2.toFixed(1)} Z" fill="${colorOf[k]}"><title>${esc(toolCatLabel(k))}: ${fmt(Math.round(v))} (${(100*v/total).toFixed(0)}%)</title></path>`; ang=a2; return p; }).join('');
+  return `<svg viewBox="0 0 140 140" class="pie">${segs}</svg>`;
+}
+function chartLegend(keys, colorOf, labelFn){
+  return `<div class="chartlegend">`+keys.map(k=>`<span class="lg"><span class="kdot" style="background:${colorOf[k]}"></span>${esc(labelFn?labelFn(k):toolCatLabel(k))}</span>`).join('')+`</div>`;
+}
+function turnCharts(){
+  const raw=turnsFromSteps(); if(!raw.length) return '';
+  const {keys,colorOf,turns}=rankCats(raw);
+  const qm=tip=>`<span class="qm" title="${esc(tip)}">?</span>`;
+  const c1=keys.length?`<div class="chartcard"><div class="charttitle">${t('chToolsCount')}</div>${lineChart(turns,keys,colorOf,(e,k)=>e.cats[k]||0,v=>String(Math.round(v)))}${chartLegend(keys,colorOf)}</div>`:'';
+  const tok=tokensByCat(turns,keys); const totTok=keys.reduce((a,k)=>a+(tok[k]||0),0);
+  const c2=(keys.length&&totTok>0)?`<div class="chartcard"><div class="charttitle">${t('chToolsTokens')} ${qm(t('chToolsTokensTip'))}</div><div class="pierow">${pieChart(keys,colorOf,tok)}${chartLegend(keys,colorOf,k=>toolCatLabel(k)+' · '+(100*(tok[k]||0)/totTok).toFixed(0)+'%')}</div></div>`:'';
+  const c3=`<div class="chartcard"><div class="charttitle">${t('chTokensTurn')} ${qm(t('chTokensTurnTip'))}</div>${lineChart(turns,['@tok'],{'@tok':css('--acc')},(e)=>e.fresh||0,v=>fmt(Math.round(v)))}</div>`;
+  // tools-por-turno (c1) y tokens-por-turno (c3) van uno bajo el otro y con el
+  // mismo eje X (turnos) para comparar directo qué herramienta gastó qué tokens;
+  // el pie de reparto (c2) queda al final.
+  return c1+c3+c2;
+}
+
 // ---- vista por defecto del panel derecho: overview ----
 function defaultDetail(){
-  SELECTED=null;
+  SELECTED=null; GRAPH_SEL=null; OPEN_SUBS.clear();
   document.getElementById('right').classList.remove('right-split');
   document.querySelectorAll('.tlcard.active').forEach(e=>e.classList.remove('active'));
   const s=DATA.summary||{}; const sc=s.stepCounts||{};
@@ -419,15 +548,14 @@ function defaultDetail(){
   const ag=(s.agents||[]).slice().sort((a,b)=>b.tokens-a.tokens).slice(0,8)
     .map(a=>`<div class="kv"><span class="kk">${esc(a.name||'?')}</span><span class="kvs">${fmt(a.tokens)} tok · ${a.durationMs?ms(a.durationMs):'?'}${a.stats&&a.stats.toolUseCount?' · '+a.stats.toolUseCount+' tools':''}</span></div>`).join('');
   const sk=(s.skills||[]).map(k=>`<div class="kv"><span class="kk">${esc(k.name)}</span><span class="kvs">${k.count}×${(k.via||[]).length?' · '+k.via.map(v=>(I18N[lang].via[v]||I18N.es.via[v]||v)).join(' / '):''}</span></div>`).join('');
-  const turnTools=ts=>{const c={};(ts||[]).forEach(l=>{const n=String(l).replace(/^tool:|^skill:|^agente:/,'');c[n]=(c[n]||0)+1;});return Object.entries(c).map(([n,k])=>k>1?`${n}×${k}`:n).join(' · ');};
-  const tn=(s.turns||[]).map(t2=>{const tools=turnTools(t2.tools);return `<div class="kv"><span class="kk">${t('turn')} ${t2.turn}${t2.model?' · '+esc(String(t2.model).replace(/^claude-/,'')):''}:</span><span class="kvs">${t2.tokens?fmt(t2.tokens.total)+' tok':'—'}${tools?' · '+esc(tools):''}</span></div>`;}).join('');
+  const charts=turnCharts();
   document.getElementById('detail').innerHTML=
     `<div class="d-h"><span class="d-ttl">${esc(DATA.title||t('summaryTitle'))}</span></div>
      <div class="d-meta">${t('overviewHint')}</div>
      <div class="d-sub">${t('composition')}</div><div class="legend" style="padding:0">${byKind}</div>
      ${sk?`<div class="d-sub">${t('skillsUsed')}</div>${sk}`:''}
      ${ag?`<div class="d-sub">${t('subAgentsByTokens')}</div>${ag}`:''}
-     ${tn?`<div class="d-sub" title="${esc(t('tokensPerTurnTip'))}">${t('tokensPerTurn')}</div>${tn}`:''}`;
+     ${charts?`<div class="d-sub">${t('turnActivity')}</div>${charts}`:''}`;
 }
 
 // ---- búsqueda ----
@@ -438,10 +566,16 @@ document.getElementById('q').oninput=e=>{ const q=e.target.value.toLowerCase();
 function renderAll(){
   // preserva la selección y el scroll de la lista al re-renderizar (modo en vivo)
   const keep=SELECTED;
+  // y el estado del detalle: nodo resaltado del grafo + sub-llamadas abiertas
+  const gsel=GRAPH_SEL, opens=new Set(OPEN_SUBS);
   const left=document.getElementById('left'); const leftScroll=left?left.scrollTop:0;
   const right=document.getElementById('right'); const rightScroll=right?right.scrollTop:0;
   REG.clear(); indexSteps(DATA.steps||[]); header(); legend(); timeline();
-  if(keep && REG.has(keep)){ select(keep); if(right) right.scrollTop=rightScroll; }
+  if(keep && REG.has(keep)){
+    select(keep); // resetea GRAPH_SEL/OPEN_SUBS; los restauramos desde las copias
+    GRAPH_SEL=gsel; OPEN_SUBS.clear(); opens.forEach(i=>OPEN_SUBS.add(i)); applyDetailState();
+    if(right) right.scrollTop=rightScroll;
+  }
   else defaultDetail();
   if(left) left.scrollTop=leftScroll;
 }
