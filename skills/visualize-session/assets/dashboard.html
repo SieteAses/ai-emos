@@ -135,6 +135,9 @@ const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&
 const fmtDur = ms => ms==null?'—':ms>=60000?(ms/60000).toFixed(1)+'m':ms>=1000?(ms/1000).toFixed(1)+'s':Math.round(ms)+'ms';
 const fmtPct = r => !r?'0%':(r*100).toFixed(r<0.1?1:0)+'%';
 const toolPills = tools => (tools||[]).slice(0,5).map(t=>`<span class="pill">${esc(t.name)} ${t.count}</span>`).join(' ') || '<span class="pill">—</span>';
+// fecha/hora en HORA LOCAL del PC (los timestamps llegan en ISO/UTC).
+const pad2 = n => String(n).padStart(2,'0');
+const ldtm = iso => { if(!iso) return ''; const d=new Date(iso); return isNaN(d)?'':d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())+' '+pad2(d.getHours())+':'+pad2(d.getMinutes()); };
 
 const stat=(b,l)=>`<div class="stat"><b>${b}</b><span>${l}</span></div>`;
 
@@ -229,7 +232,7 @@ document.getElementById('sessions').innerHTML = barTable(
   D.sessions.map(s=>({...s,_bar:s.tokens})),
   [
     {h:t('colSession'),fn:s=>`${esc(s.title||s.sessionId)} <span class="pill">${esc(s.source)}</span>`},
-    {h:t('colStart'),fn:s=>(s.startedAt||'').slice(0,16).replace('T',' ')},
+    {h:t('colStart'),fn:s=>ldtm(s.startedAt)},
     {h:t('colSteps'),k:'steps',num:1},
     {h:t('colAgents'),k:'agents',num:1},
     {h:t('colDecisions'),k:'decisions',num:1},

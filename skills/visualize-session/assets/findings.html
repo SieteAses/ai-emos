@@ -130,6 +130,10 @@ const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&
 const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
 const ms = n => n==null?'':(n>=60000?(n/60000).toFixed(1)+'m':n>=1000?(n/1000).toFixed(1)+'s':n+'ms');
 const role2 = r => (I18N[lang].role[r]||I18N.es.role[r]||'');
+// fecha/hora en HORA LOCAL del PC (los timestamps llegan en ISO/UTC).
+const pad2 = n => String(n).padStart(2,'0');
+const ldtm = iso => { if(!iso) return ''; const d=new Date(iso); return isNaN(d)?'':d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())+' '+pad2(d.getHours())+':'+pad2(d.getMinutes()); };
+const ldts = iso => { const s=ldtm(iso); if(!s) return ''; const d=new Date(iso); return s+':'+pad2(d.getSeconds()); };
 
 // ---- índice de pasos por (index,label), incluye anidados de sub-agentes ----
 const STEPS = [];
@@ -190,7 +194,7 @@ function findingBody(x){
   const s=findStep(x);
   let h='';
   if(s){
-    const meta=[s.role?role2(s.role):'',s.timestamp?s.timestamp.replace('T',' ').slice(0,19):'',(s.tokens&&s.tokens.total)?fmt(s.tokens.total)+' tok':'',s.durationMs?ms(s.durationMs):''].filter(Boolean).join(' · ');
+    const meta=[s.role?role2(s.role):'',s.timestamp?ldts(s.timestamp):'',(s.tokens&&s.tokens.total)?fmt(s.tokens.total)+' tok':'',s.durationMs?ms(s.durationMs):''].filter(Boolean).join(' · ');
     if(meta) h+=`<div class="d-meta">${esc(meta)}</div>`;
     const body=(s.kind==='decision'?decisionBlock(s.decision):'')+ioBlock(s);
     h+= body || `<div class="empty">${t('noIO')}</div>`;
@@ -205,7 +209,7 @@ function findingBody(x){
 function header(){
   const f=(DATA.summary&&DATA.summary.findings)||[];
   document.getElementById('title').textContent=t('titleN', f.length);
-  const span=DATA.startedAt?`${DATA.startedAt.slice(0,16).replace('T',' ')} → ${(DATA.endedAt||'').slice(0,16).replace('T',' ')}`:'';
+  const span=DATA.startedAt?`${ldtm(DATA.startedAt)} → ${ldtm(DATA.endedAt)}`:'';
   document.getElementById('sub').textContent=t('sub', DATA.title||t('session', DATA.sessionId||''), DATA.source, span?' · '+span:'');
 }
 function renderFindings(){

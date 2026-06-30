@@ -192,6 +192,9 @@ const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':
 const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
 const fmtDur = ms => ms==null?'—':ms>=60000?(ms/60000).toFixed(1)+'m':ms>=1000?(ms/1000).toFixed(1)+'s':Math.round(ms)+'ms';
 const fmtPct = r => !r?'0%':(r*100).toFixed(r<0.1?1:0)+'%';
+// fecha/hora en HORA LOCAL del PC (los timestamps llegan en ISO/UTC).
+const pad2 = n => String(n).padStart(2,'0');
+const ldtm = iso => { if(!iso) return ''; const d=new Date(iso); return isNaN(d)?'':d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())+' '+pad2(d.getHours())+':'+pad2(d.getMinutes()); };
 let all = (DATA.sessions||[]);
 let page=0, size=50, filter='';
 
@@ -218,7 +221,7 @@ function render(){
     <tr class="row" data-id="${esc(s.sessionId)}">
       <td><span class="ttl">${esc(s.title||s.sessionId)}</span></td>
       <td><span class="pill">${esc(s.source||'')}</span></td>
-      <td>${s.endedAt?esc(s.endedAt.slice(0,16).replace('T',' ')):''}</td>
+      <td>${esc(ldtm(s.endedAt))}</td>
       <td class="num">${fmt(s.tokens)}</td>
     </tr>`).join('') : `<tr><td colspan="4" class="empty">${t('noSessions')}</td></tr>`;
   tb.querySelectorAll('tr.row').forEach(tr=>tr.onclick=()=>{
