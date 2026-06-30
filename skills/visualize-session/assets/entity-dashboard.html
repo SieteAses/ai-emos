@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ai-emos — dashboard</title>
+<style>
+  :root{--bg:#0f1115;--panel:#171a21;--panel2:#1e222b;--line:#2a2f3a;--tx:#e6e8ee;--mut:#9aa3b2;--acc:#6ea8fe;--bar:#3a64c0;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--tx);font:14px/1.5 ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
+  header{padding:16px 22px;border-bottom:1px solid var(--line);background:var(--panel);}
+  h1{font-size:16px;margin:0;} .sub{color:var(--mut);font-size:12px;margin-top:3px;}
+  .stats{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;}
+  .stat{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 10px;}
+  .stat b{font-size:15px;} .stat span{color:var(--mut);font-size:11px;display:block;}
+  .langtoggle{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-left:auto;}
+  .langtoggle button{border:0;border-radius:0;padding:5px 9px;background:var(--panel2);color:var(--mut);font-size:11px;cursor:pointer;}
+  .langtoggle button.on{background:var(--acc);color:#0b0d11;font-weight:600;}
+  .hrow{display:flex;align-items:flex-start;gap:12px;}
+  main{padding:0 22px 28px;}
+  h2{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);margin:18px 0 8px;}
+  .adbar{display:flex;align-items:center;gap:10px;margin:14px 0 12px;flex-wrap:wrap;}
+  .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  .seg button{border:0;border-radius:0;padding:5px 12px;background:var(--panel2);color:var(--tx);cursor:pointer;}
+  .seg button.on{background:var(--acc);color:#0b0d11;font-weight:600;}
+  .charts{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+  .chart{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;}
+  .charth{font-size:12px;color:var(--mut);margin-bottom:6px;}
+  .spark{display:block;width:100%;height:auto;}
+  .sparkmeta{display:flex;justify-content:space-between;color:var(--mut);font-size:11px;margin-top:4px;}
+  .note{color:var(--mut);font-size:12px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);}
+  th{color:var(--mut);font-weight:600;}
+  td.num{text-align:right;font-variant-numeric:tabular-nums;}
+  tr.row{cursor:pointer;} tr.row:hover td{background:var(--panel2);}
+  .ttl{font-weight:600;}
+  .tools{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
+  .pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:1px 8px;font-size:11px;color:var(--mut);}
+  .empty{color:var(--mut);font-style:italic;padding:18px 0;}
+</style>
+</head>
+<body>
+<header>
+  <div class="hrow">
+    <div>
+      <h1 id="h1">Dashboard</h1>
+      <div class="sub" id="sub"></div>
+    </div>
+    <div class="langtoggle" id="langtoggle"></div>
+  </div>
+  <div class="stats" id="stats"></div>
+</header>
+<main>
+  <div class="adbar">
+    <div class="seg"><button id="ad7" class="on">últimos 7 días</button><button id="ad30">últimos 30 días</button></div>
+  </div>
+  <div class="charts" id="charts"></div>
+  <h2 id="h2Sessions">sesiones</h2>
+  <table><thead><tr><th id="thSession">sesión</th><th id="thWhen">fecha</th><th class="num" id="thVal">valor</th></tr></thead><tbody id="rows"></tbody></table>
+  <div class="note" id="openHint" style="margin-top:8px"></div>
+</main>
+
+<script id="report-data" type="application/json">{"kind":"agent","name":"","timeline":[],"summary":{}}</script>
+<script>
+// ---- i18n (ES por defecto; auto-detecta y permite toggle ES|EN) ----
+const I18N = {
+  es: {
+    docTitle:'ai-emos — dashboard', agentDot:'Agente · {0}', skillDot:'Skill · {0}',
+    appearDays:'{0} apariciones · {1} días con datos',
+    win1:'último día', win7:'últimos 7 días', win30:'últimos 30 días',
+    winTip:'Cada punto = un día (suma de las sesiones de esa jornada), en la ventana elegida.',
+    min:'mín', last:'últ', max:'máx', noData:'sin datos para esta entidad',
+    chTokens:'tokens', chError:'% error', chDuration:'duración', chDurationDay:'duración (total/día)', chRetries:'reintentos', chUses:'usos',
+    mCalls:'llamadas', mSessions:'sesiones', mTokens:'tokens', mP90:'tokens p90', mErrorRate:'% error', mDuration:'duración', mUses:'usos totales', mTools:'herramientas',
+    sessions:'sesiones', thSession:'sesión', thWhen:'fecha', thTokens:'tokens', thUses:'usos',
+    noSessions:'Sin sesiones.', openHint:'clic en una sesión → abre su timeline EN VIVO',
+  },
+  en: {
+    docTitle:'ai-emos — dashboard', agentDot:'Agent · {0}', skillDot:'Skill · {0}',
+    appearDays:'{0} appearances · {1} days with data',
+    win1:'last day', win7:'last 7 days', win30:'last 30 days',
+    winTip:'Each point = one day (sum of that day’s sessions), within the chosen window.',
+    min:'min', last:'last', max:'max', noData:'no data for this entity',
+    chTokens:'tokens', chError:'% error', chDuration:'duration', chDurationDay:'duration (total/day)', chRetries:'retries', chUses:'uses',
+    mCalls:'calls', mSessions:'sessions', mTokens:'tokens', mP90:'tokens p90', mErrorRate:'% error', mDuration:'duration', mUses:'total uses', mTools:'tools',
+    sessions:'sessions', thSession:'session', thWhen:'when', thTokens:'tokens', thUses:'uses',
+    noSessions:'No sessions.', openHint:'click a session → opens its LIVE timeline',
+  },
+};
+function resolveLang(){
+  try{ const s=localStorage.getItem('aiEmosLang'); if(s==='es'||s==='en') return s; }catch(e){}
+  if(window.__lang==='es'||window.__lang==='en') return window.__lang;
+  return String(navigator.language||'es').toLowerCase().startsWith('en')?'en':'es';
+}
+let lang = resolveLang();
+const t = (k,...a)=>{ let s=(I18N[lang]&&I18N[lang][k])||I18N.es[k]||k; a.forEach((v,i)=>{s=s.split('{'+i+'}').join(v);}); return s; };
+
+const DATA = JSON.parse(document.getElementById('report-data').textContent);
+const api = window.__vscodeApi || null;
+const KIND = DATA.kind==='skill'?'skill':'agent';
+const NAME = DATA.name||'';
+const TL = DATA.timeline||[];
+const SUM = DATA.summary||{};
+const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
+const fmtDur = ms => ms==null?'—':ms>=60000?(ms/60000).toFixed(1)+'m':ms>=1000?(ms/1000).toFixed(1)+'s':Math.round(ms)+'ms';
+const fmtPct = r => !r?'0%':(r*100).toFixed(r<0.1?1:0)+'%';
+
+let winDays=7; // ventana del gráfico: 1 | 7 | 30 días
+function byDay(pts){
+  const m=new Map();
+  for(const p of pts){
+    const d=(p.startedAt||'').slice(0,10)||'?';
+    const e=m.get(d)||{title:d,startedAt:d,tokens:0,durationMs:0,errors:0,retries:0,calls:0,toolUses:0,count:0};
+    e.tokens+=p.tokens||0; e.durationMs+=p.durationMs||0; e.errors+=p.errors||0; e.retries+=p.retries||0; e.calls+=p.calls||0; e.toolUses+=p.toolUses||0; e.count+=p.count||0;
+    m.set(d,e);
+  }
+  return [...m.values()].map(e=>({...e,errorRate:e.toolUses?e.errors/e.toolUses:0})).sort((a,b)=>a.startedAt.localeCompare(b.startedAt));
+}
+function dayShift(dayStr,deltaDays){ const d=new Date(dayStr+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+deltaDays); return d.toISOString().slice(0,10); }
+function inWindow(dailyPts,days){
+  if(!dailyPts.length) return dailyPts;
+  const ref=dailyPts[dailyPts.length-1].startedAt.slice(0,10);
+  const cutoff=dayShift(ref,-(days-1));
+  return dailyPts.filter(p=>p.startedAt.slice(0,10)>=cutoff);
+}
+function winPts(){ return inWindow(byDay(TL), winDays); }
+// ticks "nice": [0..top] en ~`target` pasos redondos (20k, 50, 0.2, …)
+function niceTicks(max, target, intStep){
+  if(!(max>0)) return [0,1];
+  const raw=max/(target||5), mag=Math.pow(10,Math.floor(Math.log10(raw))), nrm=raw/mag;
+  let step=(nrm<1.5?1:nrm<3?2:nrm<7?5:10)*mag;
+  if(intStep) step=Math.max(1,Math.round(step)); // datos enteros (conteos): nada de pasos 0.5
+  const top=Math.ceil(max/step)*step, out=[];
+  for(let i=0; i*step<=top+step*1e-6; i++) out.push(+(i*step).toFixed(10)); // i*step + toFixed: sin drift float
+  return out;
+}
+// índices equiespaciados sobre n puntos (incluye extremos), hasta `maxT` rótulos
+function tickIdx(n, maxT){
+  if(n<=1) return [0]; maxT=maxT||8;
+  const want=n<=maxT?n:maxT, out=[];
+  for(let i=0;i<want;i++) out.push(Math.round(i*(n-1)/(want-1)));
+  return [...new Set(out)];
+}
+// línea con ejes: Y en pasos "nice" (grilla punteada) y X rotulado por fecha (5–10 ticks)
+function spark(pts,getY,fmtY){
+  const w=360,h=104,padL=44,padR=12,padT=8,padB=22, n=pts.length, ys=pts.map(getY), FS=7;
+  const mx=Math.max(1,...ys), intY=ys.every(Number.isInteger);
+  const yt=niceTicks(mx,5,intY), top=yt[yt.length-1]||1;
+  const plotW=w-padL-padR, plotH=h-padT-padB;
+  const X=i=> n===1? padL+plotW/2 : padL+i*plotW/(n-1);
+  const Y=v=> (padT+plotH)-(v/top)*plotH;
+  const pl=pts.map((p,i)=>X(i).toFixed(1)+','+Y(getY(p)).toFixed(1)).join(' ');
+  const dots=pts.map((p,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(getY(p)).toFixed(1)}" r="2.5" fill="var(--acc)"><title>${esc((p.title||p.sessionId||'')+': '+fmtY(getY(p)))}</title></circle>`).join('');
+  const ax='var(--line)', lb='var(--mut)';
+  const grid=yt.map(v=>`<line x1="${padL}" y1="${Y(v).toFixed(1)}" x2="${w-padR}" y2="${Y(v).toFixed(1)}" stroke="${ax}" stroke-dasharray="2 3" opacity=".5"/><text x="${padL-5}" y="${(Y(v)+3).toFixed(1)}" text-anchor="end" fill="${lb}" font-size="${FS}">${esc(fmtY(v))}</text>`).join('');
+  const yAxis=`<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+plotH}" stroke="${ax}"/>`;
+  const xAxis=`<line x1="${padL}" y1="${padT+plotH}" x2="${w-padR}" y2="${padT+plotH}" stroke="${ax}"/>`;
+  const xl=p=>String(p&&p.startedAt||'').slice(5,10);
+  const xT=tickIdx(n,8).map(i=>{ const x=X(i), anc=i===0?'start':i===n-1?'end':'middle';
+    return `<line x1="${x.toFixed(1)}" y1="${(padT+plotH).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(padT+plotH+3).toFixed(1)}" stroke="${ax}"/><text x="${x.toFixed(1)}" y="${h-7}" text-anchor="${anc}" fill="${lb}" font-size="${FS}">${esc(xl(pts[i]))}</text>`; }).join('');
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}">${grid}${yAxis}${xAxis}<polyline fill="none" stroke="var(--acc)" stroke-width="1.5" points="${pl}"/>${dots}${xT}</svg>`;
+}
+function stat(b,l){ return `<div class="stat"><b>${b}</b><span>${l}</span></div>`; }
+function metrics(){
+  if(KIND==='skill'){
+    const total=(SUM.count!=null)?SUM.count:TL.reduce((a,p)=>a+(p.count||0),0);
+    return stat(fmt(total), t('mUses'))+stat(TL.length, t('mSessions'));
+  }
+  let h=stat(fmt(SUM.calls||0), t('mCalls'))+stat(SUM.sessions||TL.length, t('mSessions'))
+    +stat(fmt(SUM.tokens||0), t('mTokens'))+stat(fmt(SUM.tokensP90||0), t('mP90'))
+    +stat(fmtPct(SUM.errorRate||0), t('mErrorRate'))+stat(fmtDur(SUM.durationMs), t('mDuration'));
+  return h;
+}
+function charts(){
+  const pts=winPts(); // siempre agregado por día, recortado a la ventana
+  if(!pts.length) return `<div class="note">${t('noData')}</div>`;
+  const defs=KIND==='skill'
+    ? [ {t:t('chUses'),g:p=>p.count||0,f:fmt} ]
+    : [
+        {t:t('chTokens'),g:p=>p.tokens||0,f:fmt},
+        {t:t('chError'),g:p=>p.errorRate||0,f:fmtPct},
+        {t:t('chDurationDay'),g:p=>p.durationMs||0,f:fmtDur},
+        {t:t('chRetries'),g:p=>p.retries||0,f:v=>String(Math.round(v))},
+      ];
+  return defs.map(c=>`<div class="chart"><div class="charth">${c.t}</div>${spark(pts,c.g,c.f)}</div>`).join('');
+}
+function sessionsTable(){
+  const valHead = KIND==='skill'?t('thUses'):t('thTokens');
+  const rows=TL.slice().sort((a,b)=>(b.startedAt||'').localeCompare(a.startedAt||''));
+  const tb=document.getElementById('rows');
+  tb.innerHTML = rows.length ? rows.map(p=>`
+    <tr class="row" data-id="${esc(p.sessionId)}">
+      <td><span class="ttl">${esc(p.title||p.sessionId)}</span></td>
+      <td>${p.startedAt?esc(String(p.startedAt).slice(0,16).replace('T',' ')):''}</td>
+      <td class="num">${fmt(KIND==='skill'?(p.count||0):(p.tokens||0))}</td>
+    </tr>`).join('') : `<tr><td colspan="3" class="empty">${t('noSessions')}</td></tr>`;
+  document.getElementById('thVal').textContent=valHead;
+  tb.querySelectorAll('tr.row').forEach(tr=>tr.onclick=()=>{
+    const p=TL.find(x=>x.sessionId===tr.dataset.id);
+    if(api&&p) api.postMessage({type:'open', id:p.sessionId, file:p.file});
+  });
+}
+function setSeg(){ [[7,'ad7'],[30,'ad30']].forEach(([d,id])=>document.getElementById(id).classList.toggle('on',winDays===d)); }
+function renderAll(){
+  document.getElementById('charts').innerHTML=charts();
+  document.getElementById('sub').textContent=t('appearDays', TL.length, winPts().length);
+}
+function applyI18n(){
+  document.title=t('docTitle');
+  document.getElementById('h1').textContent=t(KIND==='skill'?'skillDot':'agentDot', NAME);
+  document.getElementById('stats').innerHTML=metrics();
+  [['ad7','win7'],['ad30','win30']].forEach(([id,k])=>{ const b=document.getElementById(id); b.textContent=t(k); b.title=t('winTip'); });
+  document.getElementById('h2Sessions').textContent=t('sessions');
+  document.getElementById('thSession').textContent=t('thSession');
+  document.getElementById('thWhen').textContent=t('thWhen');
+  document.getElementById('openHint').textContent=t('openHint');
+  renderAll();
+  sessionsTable();
+}
+function renderLangToggle(){
+  const el=document.getElementById('langtoggle'); if(!el) return;
+  el.innerHTML=['es','en'].map(l=>`<button data-l="${l}" class="${l===lang?'on':''}">${l.toUpperCase()}</button>`).join('');
+  el.querySelectorAll('button').forEach(b=>b.onclick=()=>setLang(b.dataset.l));
+}
+function setLang(l){ if(l!==lang){ lang=l; try{localStorage.setItem('aiEmosLang',l);}catch(e){} } document.documentElement.lang=l; applyI18n(); renderLangToggle(); }
+
+function setWin(d){ winDays=d; setSeg(); renderAll(); }
+document.getElementById('ad7').onclick=()=>setWin(7);
+document.getElementById('ad30').onclick=()=>setWin(30);
+
+document.documentElement.lang=lang;
+renderLangToggle();
+applyI18n();
+</script>
+</body>
+</html>

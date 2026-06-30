@@ -91,7 +91,7 @@ async function withProgress(title, fn) {
 }
 
 // Abre un reporte (timeline/dashboard/findings) en una pestaña nueva, con botón
-// Guardar. opts: { column, findingsButton, findingsCount, onOpenFindings }.
+// Guardar. opts: { column, findingsButton, findingsCount, onOpenFindings, onOpen }.
 function openReport(data, templateName, title, defaultName, opts = {}) {
   const template = fs.readFileSync(path.join(ASSETS, templateName), 'utf8')
   // HTML self-contained (lo que se guarda): fija el idioma actual por defecto.
@@ -122,6 +122,9 @@ function openReport(data, templateName, title, defaultName, opts = {}) {
       }
     } else if (msg.type === 'open-findings' && opts.onOpenFindings) {
       opts.onOpenFindings()
+    } else if (msg.type === 'open' && opts.onOpen) {
+      // p.ej. clic en una fila de sesión del dashboard por entidad → abre su timeline
+      await opts.onOpen(msg)
     }
   })
   return panel
@@ -235,6 +238,29 @@ async function cmdLiveSession() {
   await openLiveSession({ sessionId: pick.row.sessionId, file: pick.row.file, title: pick.row.title })
 }
 
+// Construye el objeto que consume entity-dashboard.html desde el último agregado:
+// la serie temporal de la entidad (enriquecida con el `file` de cada sesión para
+// poder abrirla en vivo) y su fila de resumen (byAgent/bySkill).
+function entityFor(kind, name, dash, rows) {
+  const fileBy = new Map((rows || []).map(r => [r.sessionId, r.file]))
+  const tlSrc = kind === 'skill' ? dash.skillTimeline || {} : dash.agentTimeline || {}
+  const timeline = (tlSrc[name] || []).map(p => ({ ...p, file: fileBy.get(p.sessionId) }))
+  const summary =
+    kind === 'skill'
+      ? (dash.bySkill || []).find(s => s.name === name) || { name, count: 0 }
+      : (dash.byAgent || []).find(a => a.name === name) || { name }
+  return { kind, name, timeline, summary }
+}
+
+// Abre el dashboard de uso de un agente/skill en una pestaña nueva. Las filas de
+// sesión abren su timeline EN VIVO (reusa openLiveSession vía opts.onOpen).
+function openEntityDashboard(entity) {
+  const slug = String(entity.name || 'entity').replace(/[^\w.-]+/g, '-')
+  openReport(entity, 'entity-dashboard.html', t('entityPanelTitle', entity.name), `entity-${entity.kind}-${slug}.html`, {
+    onOpen: m => openLiveSession({ sessionId: m.id, file: m.file }),
+  })
+}
+
 // Vista UNIFICADA: lista paginada de sesiones (rápida) + agregados bajo demanda.
 // Clic en una sesión → abre su timeline en pestaña nueva.
 // "Analizar agregados" → parsea las sesiones del filtro y devuelve byAgent/bySkill.
@@ -278,12 +304,17 @@ async function cmdSessions() {
     }
   })
 
+  let lastDash = null // último agregado calculado; alimenta el dashboard por entidad
   panel.webview.onDidReceiveMessage(async msg => {
     if (!msg) return
     if (msg.type === 'open') {
       const r = rows.find(x => x.sessionId === msg.id) || {}
       // abre la sesión EN VIVO (panel que se refresca al cambiar el archivo)
       await openLiveSession({ sessionId: msg.id, file: msg.file || r.file, title: r.title })
+    } else if (msg.type === 'openEntity') {
+      // clic en un agente/skill → dashboard de uso en pestaña nueva
+      if (!lastDash) return
+      openEntityDashboard(entityFor(msg.kind === 'skill' ? 'skill' : 'agent', msg.name, lastDash, rows))
     } else if (msg.type === 'aggregate') {
       const ids = new Set(msg.ids || [])
       const subset = rows.filter(r => ids.has(r.sessionId))
@@ -297,6 +328,7 @@ async function cmdSessions() {
           }
         }
         const dash = render.aggregate(traces)
+        lastDash = dash
         core.criteria.saveBaselines(dash.baselines) // refresca el baseline por agente
         panel.webview.postMessage({ type: 'aggregateResult', data: dash })
       })
