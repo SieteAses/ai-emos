@@ -10,6 +10,7 @@
   "bugs": { "url": "https://github.com/SieteAses/ai-emos/issues" },
   "homepage": "https://github.com/SieteAses/ai-emos#readme",
   "galleryBanner": { "color": "#0b0d11", "theme": "dark" },
+  "icon": "bundled/icon.png",
   "engines": { "vscode": "^1.75.0" },
   "categories": ["Visualization", "Other"],
   "keywords": ["observability", "agents", "timeline", "claude-code", "opentelemetry", "ia"],
