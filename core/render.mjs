@@ -510,21 +510,20 @@ export function aggregate(traces) {
       .sort((a, b) => b.count - a.count),
     sessions: sessions.sort((a, b) => (b.endedAt || '').localeCompare(a.endedAt || '')),
     baselines,
-    // serie temporal por agente, ordenada cronológicamente
-    agentTimeline: Object.fromEntries(
-      [...agentTimeline.entries()].map(([name, pts]) => [
-        name,
-        pts.sort((a, b) => (a.startedAt || '').localeCompare(b.startedAt || '')),
-      ]),
-    ),
-    // serie temporal por skill (usos), ordenada cronológicamente
-    skillTimeline: Object.fromEntries(
-      [...skillTimeline.entries()].map(([name, pts]) => [
-        name,
-        pts.sort((a, b) => (a.startedAt || '').localeCompare(b.startedAt || '')),
-      ]),
-    ),
+    // series temporales (puntos por sesión) ordenadas cronológicamente
+    agentTimeline: chronoSerialize(agentTimeline),
+    skillTimeline: chronoSerialize(skillTimeline),
   }
+}
+
+// Map<nombre,[puntos]> → objeto plano con cada serie ordenada por startedAt asc.
+function chronoSerialize(map) {
+  return Object.fromEntries(
+    [...map.entries()].map(([name, pts]) => [
+      name,
+      pts.sort((a, b) => (a.startedAt || '').localeCompare(b.startedAt || '')),
+    ]),
+  )
 }
 
 export default { enrich, aggregate, mergeQualityFindings }

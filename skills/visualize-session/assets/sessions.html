@@ -20,6 +20,7 @@
   button:hover,select:hover{border-color:var(--acc);}
   button:disabled{opacity:.4;cursor:default;}
   button.primary{background:var(--acc);color:#0b0d11;border-color:var(--acc);font-weight:600;}
+  button#analyze.stale{background:#ffb86b;border-color:#ffb86b;}
   .langtoggle{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;}
   .langtoggle button{border:0;border-radius:0;padding:5px 9px;background:var(--panel2);color:var(--mut);font-size:11px;}
   .langtoggle button.on{background:var(--acc);color:#0b0d11;font-weight:600;}
@@ -53,7 +54,6 @@
   .chart{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;}
   .charth{font-size:12px;color:var(--mut);margin-bottom:6px;}
   .spark{display:block;width:100%;height:auto;}
-  .sparkmeta{display:flex;justify-content:space-between;color:var(--mut);font-size:11px;margin-top:4px;}
 </style>
 </head>
 <body>
@@ -103,13 +103,13 @@
 const I18N = {
   es: {
     docTitle:'ai-emos — sesiones', h1:'Sesiones', searchPh:'filtrar por título / id / fuente…',
-    perPage:'por página', analyze:'📊 Analizar agregados', reanalyze:'📊 Re-analizar agregados',
+    perPage:'por página', analyze:'📊 Analizar agregados', reanalyze:'📊 Re-analizar agregados', reanalyzeStale:'🔄 Re-analizar (datos nuevos)',
     analyzeTitle:'Calcula tokens por agente/skill sobre las sesiones del filtro (parsea cada una)',
     analyzing:'Analizando {0}…', aggTitle:'Agregados',
     byAgent:'Por agente (tokens)', byAgentHint:'clic → en el tiempo', bySkill:'Por skill (usos)',
     agent:'Agente', agentDot:'Agente · {0}', skillDot:'Skill · {0}',
     appearDays:'{0} apariciones · {1} días con datos', close:'cerrar',
-    win1:'último día', win7:'últimos 7 días', win30:'últimos 30 días',
+    win7:'últimos 7 días', win30:'últimos 30 días',
     winTip:'Cada punto = un día (suma de las sesiones de esa jornada), en la ventana elegida.',
     openWindow:'↗ abrir en ventana', openWindowTitle:'Abre el dashboard de uso en una pestaña nueva',
     bySkillHint:'clic → en el tiempo', chUses:'usos', noSkillData:'sin datos para este skill',
@@ -119,7 +119,7 @@ const I18N = {
     hint:'clic en una sesión → abre su timeline EN VIVO · la tabla se actualiza sola',
     sessions:'sesiones', filter:'(filtro)', tokensRaw:'tokens (bruto)',
     pginfo:'{0}–{1} de {2}', pginfoEmpty:'0 de 0', subCount:'{0} sesiones{1}', subInFilter:' · {0} en el filtro',
-    min:'mín', last:'últ', max:'máx', noAgentData:'sin datos para este agente',
+    noAgentData:'sin datos para este agente',
     chTokens:'tokens', chError:'% error', chDuration:'duración', chDurationDay:'duración (total/día)', chRetries:'reintentos',
     days:'días', daysUnit:'sesiones', colAgent:'agente', colCalls:'llamadas', colTokens:'tokens',
     colSkill:'skill', colUses:'usos',
@@ -127,13 +127,13 @@ const I18N = {
   },
   en: {
     docTitle:'ai-emos — sessions', h1:'Sessions', searchPh:'filter by title / id / source…',
-    perPage:'per page', analyze:'📊 Analyze aggregates', reanalyze:'📊 Re-analyze aggregates',
+    perPage:'per page', analyze:'📊 Analyze aggregates', reanalyze:'📊 Re-analyze aggregates', reanalyzeStale:'🔄 Re-analyze (new data)',
     analyzeTitle:'Computes tokens per agent/skill over the filtered sessions (parses each one)',
     analyzing:'Analyzing {0}…', aggTitle:'Aggregates',
     byAgent:'By agent (tokens)', byAgentHint:'click → over time', bySkill:'By skill (uses)',
     agent:'Agent', agentDot:'Agent · {0}', skillDot:'Skill · {0}',
     appearDays:'{0} appearances · {1} days with data', close:'close',
-    win1:'last day', win7:'last 7 days', win30:'last 30 days',
+    win7:'last 7 days', win30:'last 30 days',
     winTip:'Each point = one day (sum of that day’s sessions), within the chosen window.',
     openWindow:'↗ open in window', openWindowTitle:'Opens the usage dashboard in a new tab',
     bySkillHint:'click → over time', chUses:'uses', noSkillData:'no data for this skill',
@@ -143,7 +143,7 @@ const I18N = {
     hint:'click a session → opens its LIVE timeline · the table updates itself',
     sessions:'sessions', filter:'(filter)', tokensRaw:'tokens (raw)',
     pginfo:'{0}–{1} of {2}', pginfoEmpty:'0 of 0', subCount:'{0} sessions{1}', subInFilter:' · {0} in filter',
-    min:'min', last:'last', max:'max', noAgentData:'no data for this agent',
+    noAgentData:'no data for this agent',
     chTokens:'tokens', chError:'% error', chDuration:'duration', chDurationDay:'duration (total/day)', chRetries:'retries',
     days:'days', daysUnit:'sessions', colAgent:'agent', colCalls:'calls', colTokens:'tokens',
     colSkill:'skill', colUses:'uses',
@@ -188,7 +188,7 @@ function applyI18n(){
 
 const DATA = JSON.parse(document.getElementById('report-data').textContent);
 const api = window.__vscodeApi || null;
-const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
 const fmtDur = ms => ms==null?'—':ms>=60000?(ms/60000).toFixed(1)+'m':ms>=1000?(ms/1000).toFixed(1)+'s':Math.round(ms)+'ms';
 const fmtPct = r => !r?'0%':(r*100).toFixed(r<0.1?1:0)+'%';
@@ -261,30 +261,50 @@ function inWindow(dailyPts,days){
   const cutoff=dayShift(ref,-(days-1));
   return dailyPts.filter(p=>p.startedAt.slice(0,10)>=cutoff);
 }
-// línea con ejes: Y rotulado (mín/medio/máx) y X con fecha del primer/último punto
+// ticks "nice": [0..top] en ~`target` pasos redondos (20k, 50, 0.2, …)
+function niceTicks(max, target, intStep){
+  if(!(max>0)) return [0,1];
+  const raw=max/(target||5), mag=Math.pow(10,Math.floor(Math.log10(raw))), nrm=raw/mag;
+  let step=(nrm<1.5?1:nrm<3?2:nrm<7?5:10)*mag;
+  if(intStep) step=Math.max(1,Math.round(step)); // datos enteros (conteos): nada de pasos 0.5
+  const top=Math.ceil(max/step)*step, out=[];
+  for(let i=0; i*step<=top+step*1e-6; i++) out.push(+(i*step).toFixed(10)); // i*step + toFixed: sin drift float
+  return out;
+}
+// índices equiespaciados sobre n puntos (incluye extremos), hasta `maxT` rótulos
+function tickIdx(n, maxT){
+  if(n<=1) return [0]; maxT=maxT||8;
+  const want=n<=maxT?n:maxT, out=[];
+  for(let i=0;i<want;i++) out.push(Math.round(i*(n-1)/(want-1)));
+  return [...new Set(out)];
+}
+// línea con ejes: Y en pasos "nice" (grilla punteada) y X rotulado por fecha (5–10 ticks)
 function spark(pts,getY,fmtY){
-  const w=320,h=96,padL=42,padR=10,padT=8,padB=20, n=pts.length, ys=pts.map(getY);
-  const mn=Math.min(0,...ys), mx=Math.max(1,...ys), span=(mx-mn)||1, md=(mn+mx)/2;
+  const w=360,h=104,padL=44,padR=12,padT=8,padB=22, n=pts.length, ys=pts.map(getY), FS=7;
+  const mx=Math.max(1,...ys), intY=ys.every(Number.isInteger);
+  const yt=niceTicks(mx,5,intY), top=yt[yt.length-1]||1;
   const plotW=w-padL-padR, plotH=h-padT-padB;
   const X=i=> n===1? padL+plotW/2 : padL+i*plotW/(n-1);
-  const Y=v=> (padT+plotH)-((v-mn)/span)*plotH;
+  const Y=v=> (padT+plotH)-(v/top)*plotH;
   const pl=pts.map((p,i)=>X(i).toFixed(1)+','+Y(getY(p)).toFixed(1)).join(' ');
   const dots=pts.map((p,i)=>`<circle cx="${X(i).toFixed(1)}" cy="${Y(getY(p)).toFixed(1)}" r="2.5" fill="var(--acc)"><title>${esc((p.title||p.sessionId||'')+': '+fmtY(getY(p)))}</title></circle>`).join('');
   const ax='var(--line)', lb='var(--mut)';
-  const grid=[mx,md,mn].map(v=>`<line x1="${padL}" y1="${Y(v).toFixed(1)}" x2="${w-padR}" y2="${Y(v).toFixed(1)}" stroke="${ax}" stroke-dasharray="2 3" opacity=".5"/><text x="${padL-5}" y="${(Y(v)+3).toFixed(1)}" text-anchor="end" fill="${lb}" font-size="6">${esc(fmtY(v))}</text>`).join('');
+  const grid=yt.map(v=>`<line x1="${padL}" y1="${Y(v).toFixed(1)}" x2="${w-padR}" y2="${Y(v).toFixed(1)}" stroke="${ax}" stroke-dasharray="2 3" opacity=".5"/><text x="${padL-5}" y="${(Y(v)+3).toFixed(1)}" text-anchor="end" fill="${lb}" font-size="${FS}">${esc(fmtY(v))}</text>`).join('');
   const yAxis=`<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT+plotH}" stroke="${ax}"/>`;
   const xAxis=`<line x1="${padL}" y1="${padT+plotH}" x2="${w-padR}" y2="${padT+plotH}" stroke="${ax}"/>`;
   const xl=p=>String(p&&p.startedAt||'').slice(5,10);
-  const xT=n?`<text x="${padL}" y="${h-6}" text-anchor="start" fill="${lb}" font-size="6">${esc(xl(pts[0]))}</text>`
-    +(n>1?`<text x="${w-padR}" y="${h-6}" text-anchor="end" fill="${lb}" font-size="6">${esc(xl(pts[n-1]))}</text>`:''):'';
-  return `<svg class="spark" viewBox="0 0 ${w} ${h}">${grid}${yAxis}${xAxis}${xT}<polyline fill="none" stroke="var(--acc)" stroke-width="1.5" points="${pl}"/>${dots}</svg>`;
+  const xT=tickIdx(n,8).map(i=>{ const x=X(i), anc=i===0?'start':i===n-1?'end':'middle';
+    return `<line x1="${x.toFixed(1)}" y1="${(padT+plotH).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(padT+plotH+3).toFixed(1)}" stroke="${ax}"/><text x="${x.toFixed(1)}" y="${h-7}" text-anchor="${anc}" fill="${lb}" font-size="${FS}">${esc(xl(pts[i]))}</text>`; }).join('');
+  return `<svg class="spark" viewBox="0 0 ${w} ${h}">${grid}${yAxis}${xAxis}<polyline fill="none" stroke="var(--acc)" stroke-width="1.5" points="${pl}"/>${dots}${xT}</svg>`;
 }
 // marca la fila seleccionada (agente/skill) para entender qué alimenta el gráfico
 function markSelected(){
   document.querySelectorAll('#byAgent tr.selrow,#bySkill tr.selrow').forEach(tr=>tr.classList.remove('selrow'));
   if(!cur) return;
-  const sel=cur.kind==='skill'?'#bySkill tr[data-skill="'+cur.name.replace(/"/g,'')+'"]':'#byAgent tr[data-agent="'+cur.name.replace(/"/g,'')+'"]';
-  const tr=document.querySelector(sel); if(tr) tr.classList.add('selrow');
+  // compara por dataset (no se construye un selector CSS): tolera nombres con
+  // comillas, corchetes, & < > … y el match usa el mismo valor crudo del data-*.
+  const box=cur.kind==='skill'?'#bySkill':'#byAgent', attr=cur.kind==='skill'?'skill':'agent';
+  document.querySelectorAll(box+' tr[data-'+attr+']').forEach(tr=>{ if(tr.dataset[attr]===cur.name) tr.classList.add('selrow'); });
 }
 // drill-down in-page de agente o skill, reutilizando el mismo panel #agentDetail.
 // opts.scroll = true mueve la vista hacia el gráfico (al elegir desde la tabla).
@@ -323,12 +343,12 @@ function renderAggregate(d){
   document.getElementById('byAgent').innerHTML=barTable(
     (d.byAgent||[]).map(a=>({...a,_bar:a.tokens})),
     [{h:t('colAgent'),fn:a=>esc(a.name||'?')},{h:t('colCalls'),k:'calls',num:1},{h:t('colTokens'),fn:a=>fmt(a.tokens),num:1},{h:'',bar:1}],
-    { rowAttr:a=>'data-agent="'+esc(String(a.name||'').replace(/"/g,''))+'" class="clickable"' });
+    { rowAttr:a=>'data-agent="'+esc(a.name||'')+'" class="clickable"' });
   document.querySelectorAll('#byAgent tr.clickable').forEach(tr=>tr.onclick=()=>showEntity('agent',tr.dataset.agent,{scroll:true}));
   document.getElementById('bySkill').innerHTML=barTable(
     (d.bySkill||[]).map(s=>({...s,_bar:s.count})),
     [{h:t('colSkill'),fn:s=>esc(s.name)},{h:t('colUses'),k:'count',num:1},{h:'',bar:1}],
-    { rowAttr:s=>'data-skill="'+esc(String(s.name||'').replace(/"/g,''))+'" class="clickable"' });
+    { rowAttr:s=>'data-skill="'+esc(s.name||'')+'" class="clickable"' });
   document.querySelectorAll('#bySkill tr.clickable').forEach(tr=>tr.onclick=()=>showEntity('skill',tr.dataset.skill,{scroll:true}));
   // mantiene la selección abierta si sigue existiendo; si no, preselecciona el primer
   // agente (el de más tokens) para que el gráfico aparezca ya poblado al cargar.
@@ -341,7 +361,7 @@ function renderAggregate(d){
   else if((d.byAgent||[]).length) showEntity('agent', d.byAgent[0].name);
   else if((d.bySkill||[]).length) showEntity('skill', d.bySkill[0].name);
   else { cur=null; document.getElementById('agentDetail').style.display='none'; }
-  const b=document.getElementById('analyze'); b.disabled=false; b.textContent=t('reanalyze');
+  const b=document.getElementById('analyze'); b.disabled=false; b.textContent=t('reanalyze'); b.classList.remove('stale');
 }
 
 document.getElementById('pagesize').onchange=e=>{size=+e.target.value;page=0;render();};
@@ -357,7 +377,12 @@ function runAnalyze(){
 document.getElementById('analyze').onclick=runAnalyze;
 // tabla EN VIVO: la extensión empuja filas frescas al cambiar las sesiones.
 // Preserva página/filtro; solo cambia el conjunto de datos.
-function applySessions(list){ all = list||[]; render(); }
+function applySessions(list){
+  all = list||[]; render();
+  // si ya hay agregados calculados, avisa que llegaron sesiones nuevas: los
+  // charts/dashboard reflejan el análisis previo hasta re-analizar.
+  if(aggD){ const b=document.getElementById('analyze'); b.textContent=t('reanalyzeStale'); b.classList.add('stale'); }
+}
 window.addEventListener('message', e=>{ const m=e.data; if(!m) return;
   if(m.type==='aggregateResult') renderAggregate(m.data);
   else if(m.type==='sessions') applySessions(m.sessions);

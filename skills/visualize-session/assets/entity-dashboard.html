@@ -27,7 +27,6 @@
   .chart{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:10px 12px;}
   .charth{font-size:12px;color:var(--mut);margin-bottom:6px;}
   .spark{display:block;width:100%;height:auto;}
-  .sparkmeta{display:flex;justify-content:space-between;color:var(--mut);font-size:11px;margin-top:4px;}
   .note{color:var(--mut);font-size:12px;}
   table{width:100%;border-collapse:collapse;font-size:13px;}
   th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);}
@@ -68,9 +67,9 @@ const I18N = {
   es: {
     docTitle:'ai-emos — dashboard', agentDot:'Agente · {0}', skillDot:'Skill · {0}',
     appearDays:'{0} apariciones · {1} días con datos',
-    win1:'último día', win7:'últimos 7 días', win30:'últimos 30 días',
+    win7:'últimos 7 días', win30:'últimos 30 días',
     winTip:'Cada punto = un día (suma de las sesiones de esa jornada), en la ventana elegida.',
-    min:'mín', last:'últ', max:'máx', noData:'sin datos para esta entidad',
+    noData:'sin datos para esta entidad',
     chTokens:'tokens', chError:'% error', chDuration:'duración', chDurationDay:'duración (total/día)', chRetries:'reintentos', chUses:'usos',
     mCalls:'llamadas', mSessions:'sesiones', mTokens:'tokens', mP90:'tokens p90', mErrorRate:'% error', mDuration:'duración', mUses:'usos totales', mTools:'herramientas',
     sessions:'sesiones', thSession:'sesión', thWhen:'fecha', thTokens:'tokens', thUses:'usos',
@@ -79,9 +78,9 @@ const I18N = {
   en: {
     docTitle:'ai-emos — dashboard', agentDot:'Agent · {0}', skillDot:'Skill · {0}',
     appearDays:'{0} appearances · {1} days with data',
-    win1:'last day', win7:'last 7 days', win30:'last 30 days',
+    win7:'last 7 days', win30:'last 30 days',
     winTip:'Each point = one day (sum of that day’s sessions), within the chosen window.',
-    min:'min', last:'last', max:'max', noData:'no data for this entity',
+    noData:'no data for this entity',
     chTokens:'tokens', chError:'% error', chDuration:'duration', chDurationDay:'duration (total/day)', chRetries:'retries', chUses:'uses',
     mCalls:'calls', mSessions:'sessions', mTokens:'tokens', mP90:'tokens p90', mErrorRate:'% error', mDuration:'duration', mUses:'total uses', mTools:'tools',
     sessions:'sessions', thSession:'session', thWhen:'when', thTokens:'tokens', thUses:'uses',
@@ -102,7 +101,7 @@ const KIND = DATA.kind==='skill'?'skill':'agent';
 const NAME = DATA.name||'';
 const TL = DATA.timeline||[];
 const SUM = DATA.summary||{};
-const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
 const fmtDur = ms => ms==null?'—':ms>=60000?(ms/60000).toFixed(1)+'m':ms>=1000?(ms/1000).toFixed(1)+'s':Math.round(ms)+'ms';
 const fmtPct = r => !r?'0%':(r*100).toFixed(r<0.1?1:0)+'%';
@@ -173,8 +172,7 @@ function metrics(){
     +stat(fmtPct(SUM.errorRate||0), t('mErrorRate'))+stat(fmtDur(SUM.durationMs), t('mDuration'));
   return h;
 }
-function charts(){
-  const pts=winPts(); // siempre agregado por día, recortado a la ventana
+function charts(pts){
   if(!pts.length) return `<div class="note">${t('noData')}</div>`;
   const defs=KIND==='skill'
     ? [ {t:t('chUses'),g:p=>p.count||0,f:fmt} ]
@@ -204,8 +202,9 @@ function sessionsTable(){
 }
 function setSeg(){ [[7,'ad7'],[30,'ad30']].forEach(([d,id])=>document.getElementById(id).classList.toggle('on',winDays===d)); }
 function renderAll(){
-  document.getElementById('charts').innerHTML=charts();
-  document.getElementById('sub').textContent=t('appearDays', TL.length, winPts().length);
+  const pts=winPts(); // agregado por día recortado a la ventana, una sola vez por render
+  document.getElementById('charts').innerHTML=charts(pts);
+  document.getElementById('sub').textContent=t('appearDays', TL.length, pts.length);
 }
 function applyI18n(){
   document.title=t('docTitle');
