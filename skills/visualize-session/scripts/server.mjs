@@ -47,7 +47,10 @@ function injectData(tpl, json) {
   const safe = escapeForScript(json)
   const re = /(<script id="report-data" type="application\/json">)([\s\S]*?)(<\/script>)/
   if (re.test(tpl)) return tpl.replace(re, (m, p1, _p2, p3) => p1 + '\n' + safe + '\n' + p3)
-  return tpl.replace('</body>', () => `<script id="report-data" type="application/json">\n${safe}\n</script>\n</body>`)
+  return tpl.replace(
+    '</body>',
+    () => `<script id="report-data" type="application/json">\n${safe}\n</script>\n</body>`,
+  )
 }
 
 // Define window.__aiEmosLive ANTES del listener del template → activa SSE.
@@ -116,7 +119,10 @@ export async function serve(opts = {}) {
           // alimenta el feed del template sin re-renderizar toda la traza.
           const nf = (info && info.newFindings) || []
           if (nf.length) {
-            const payload = { findings: nf, total: ((trace.summary && trace.summary.findings) || []).length }
+            const payload = {
+              findings: nf,
+              total: ((trace.summary && trace.summary.findings) || []).length,
+            }
             res.write('event: finding\ndata: ' + JSON.stringify(payload) + '\n\n')
           }
         }
@@ -154,7 +160,10 @@ export async function serve(opts = {}) {
             /* salta ilegibles */
           }
         }
-        return sendHtml(res, injectData(readTemplate('dashboard.html'), JSON.stringify(aggregate(traces))))
+        return sendHtml(
+          res,
+          injectData(readTemplate('dashboard.html'), JSON.stringify(aggregate(traces))),
+        )
       }
 
       // --- Timeline en vivo (raíz o /timeline) ---
@@ -165,7 +174,10 @@ export async function serve(opts = {}) {
           return res.end()
         }
         const trace = await parseTrace({ ...baseOpts, session, source: src })
-        const liveUrl = '/events?session=' + encodeURIComponent(session) + (src ? '&source=' + encodeURIComponent(src) : '')
+        const liveUrl =
+          '/events?session=' +
+          encodeURIComponent(session) +
+          (src ? '&source=' + encodeURIComponent(src) : '')
         const tpl = injectLive(readTemplate('timeline.html'), liveUrl)
         return sendHtml(res, injectData(tpl, JSON.stringify(trace)))
       }
@@ -178,7 +190,10 @@ export async function serve(opts = {}) {
   })
 
   await new Promise(resolve => server.listen(port, '127.0.0.1', resolve))
-  const route = opts.dashboard || !opts.session ? '/dashboard' : '/timeline?session=' + encodeURIComponent(opts.session)
+  const route =
+    opts.dashboard || !opts.session
+      ? '/dashboard'
+      : '/timeline?session=' + encodeURIComponent(opts.session)
   const url = `http://127.0.0.1:${port}${route}`
   return { url, close: () => server.close() }
 }

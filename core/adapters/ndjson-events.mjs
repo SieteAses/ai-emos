@@ -115,7 +115,10 @@ async function parse(opts = {}) {
   const events = readLines(file)
   const header = events.find(e => e.kind === 'session') || {}
   const steps = buildSteps(events)
-  const ts = events.map(e => e.ts).filter(Boolean).sort()
+  const ts = events
+    .map(e => e.ts)
+    .filter(Boolean)
+    .sort()
   const models = new Set(header.models || [])
   for (const e of events) if (e.model) models.add(e.model)
   return {
@@ -144,7 +147,10 @@ function detect(opts = {}) {
   if (f.endsWith('.ndjson')) return true
   // .jsonl: huele si la primera línea no-vacía trae nuestra forma (kind sin uuid)
   try {
-    const first = fs.readFileSync(f, 'utf8').split('\n').find(l => l.trim())
+    const first = fs
+      .readFileSync(f, 'utf8')
+      .split('\n')
+      .find(l => l.trim())
     if (!first) return false
     const o = JSON.parse(first)
     return o && typeof o.kind === 'string' && o.uuid === undefined && o.type === undefined

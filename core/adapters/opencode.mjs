@@ -83,14 +83,17 @@ function jparse(s, dflt = null) {
 function truncate(v) {
   const s = typeof v === 'string' ? v : v == null ? null : JSON.stringify(v, null, 2)
   if (s == null) return { value: null, truncated: false }
-  return s.length > MAX_IO ? { value: s.slice(0, MAX_IO), truncated: true } : { value: s, truncated: false }
+  return s.length > MAX_IO
+    ? { value: s.slice(0, MAX_IO), truncated: true }
+    : { value: s, truncated: false }
 }
 
 // Recorta cadenas largas conservando la forma (input estructurado legible en el visor).
 function clip(v, maxStr = 4000, depth = 0) {
   if (v == null) return v
   if (typeof v === 'string') return v.length > maxStr ? v.slice(0, maxStr) + '…[recortado]' : v
-  if (Array.isArray(v)) return depth > 4 ? '[…]' : v.slice(0, 60).map(x => clip(x, maxStr, depth + 1))
+  if (Array.isArray(v))
+    return depth > 4 ? '[…]' : v.slice(0, 60).map(x => clip(x, maxStr, depth + 1))
   if (typeof v === 'object') {
     if (depth > 6) return '{…}'
     const o = {}
@@ -107,7 +110,13 @@ function normTokens(t) {
   const output = t.output || 0
   const cacheRead = (t.cache && t.cache.read) || 0
   const cacheCreate = (t.cache && t.cache.write) || 0
-  return { input, output, cacheRead, cacheCreate, total: t.total || input + output + cacheRead + cacheCreate }
+  return {
+    input,
+    output,
+    cacheRead,
+    cacheCreate,
+    total: t.total || input + output + cacheRead + cacheCreate,
+  }
 }
 
 function modelId(modelField) {
@@ -142,7 +151,10 @@ async function listSessions(opts = {}) {
       startedAt: iso(r.time_created),
       endedAt: iso(r.time_updated),
       tokens:
-        (r.tokens_input || 0) + (r.tokens_output || 0) + (r.tokens_cache_read || 0) + (r.tokens_cache_write || 0),
+        (r.tokens_input || 0) +
+        (r.tokens_output || 0) +
+        (r.tokens_cache_read || 0) +
+        (r.tokens_cache_write || 0),
     }))
 }
 
@@ -162,7 +174,8 @@ async function parse(opts = {}) {
       : `select * from session order by time_updated desc limit 1`,
   )
   const sess = srows[0]
-  if (!sess) throw new Error(`No encontré la sesión opencode: ${opts.session || '(la más reciente)'}`)
+  if (!sess)
+    throw new Error(`No encontré la sesión opencode: ${opts.session || '(la más reciente)'}`)
   sessionId = sess.id
 
   // mensajes (rol + tokens por turno) y parts (contenido), en orden cronológico
@@ -195,7 +208,13 @@ async function parse(opts = {}) {
     if (d.type === 'text') {
       const text = (d.text || '').trim()
       if (!text) continue
-      step = { timestamp: ts, kind: 'message', role, label: role === 'user' ? 'prompt del usuario' : 'respuesta', text }
+      step = {
+        timestamp: ts,
+        kind: 'message',
+        role,
+        label: role === 'user' ? 'prompt del usuario' : 'respuesta',
+        text,
+      }
     } else if (d.type === 'reasoning') {
       const text = (d.text || '').trim()
       if (!text) continue

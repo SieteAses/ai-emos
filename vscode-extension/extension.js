@@ -15,7 +15,7 @@ const fs = require('fs')
 const os = require('os')
 const path = require('path')
 const { pathToFileURL } = require('url')
-const { buildHtml, prepareWebview, makeNonce, fmtTok, injectLang, pickLang, tr } = require('./lib')
+const { buildHtml, prepareWebview, makeNonce, injectLang, pickLang, tr } = require('./lib')
 
 // Idioma de la UI: sigue la locale de VS Code (ES por defecto, EN si lo es).
 // El visor HTML permite además un toggle ES|EN que persiste en localStorage.
@@ -60,7 +60,13 @@ function criteriaOverrides() {
     const i = c.inspect(key)
     return i && (i.workspaceFolderValue ?? i.workspaceValue ?? i.globalValue)
   }
-  for (const key of ['tokens.turnBudget', 'tokens.agentBudget', 'durationMs.tool', 'durationMs.agent', 'baseline.sigma']) {
+  for (const key of [
+    'tokens.turnBudget',
+    'tokens.agentBudget',
+    'durationMs.tool',
+    'durationMs.agent',
+    'baseline.sigma',
+  ]) {
     set(key, fixed(key))
   }
   return o
@@ -137,9 +143,15 @@ function openTimelineReport(trace, label, timelineName, findingsName) {
   let findingsPanel = null
   const onOpenFindings = () => {
     if (findingsPanel) return findingsPanel.reveal(vscode.ViewColumn.Beside)
-    findingsPanel = openReport(trace, 'findings.html', t('findingsPanelTitle', label), findingsName, {
-      column: vscode.ViewColumn.Beside,
-    })
+    findingsPanel = openReport(
+      trace,
+      'findings.html',
+      t('findingsPanelTitle', label),
+      findingsName,
+      {
+        column: vscode.ViewColumn.Beside,
+      },
+    )
     findingsPanel.onDidDispose(() => {
       findingsPanel = null
     })
@@ -166,7 +178,8 @@ function notifyLiveFindings(newFindings, panel) {
   const what = `${head.category || t('segment')}: ${head.why || head.label || ''}`.trim()
   const seeFindings = t('seeFindings')
   vscode.window.showWarningMessage(`ai-emos · ${what}${extra}`, seeFindings).then(pick => {
-    if (pick === seeFindings && panel && typeof panel.__openFindings === 'function') panel.__openFindings()
+    if (pick === seeFindings && panel && typeof panel.__openFindings === 'function')
+      panel.__openFindings()
   })
 }
 
@@ -174,7 +187,10 @@ async function openTimelineForSession(sess) {
   const core = await loadCore()
   const { adapters, render } = core
   await withProgress(t('parsingSession'), async () => {
-    const trace = render.enrich(await adapters.parse({ session: sess.file || sess.sessionId, adapter: sess.source }), evalOptions(core))
+    const trace = render.enrich(
+      await adapters.parse({ session: sess.file || sess.sessionId, adapter: sess.source }),
+      evalOptions(core),
+    )
     const label = sess.title || sess.sessionId
     openTimelineReport(
       trace,
@@ -202,23 +218,26 @@ async function openLiveSession(sess) {
       `session-timeline-${sess.sessionId}.html`,
       `session-findings-${sess.sessionId}.html`,
     )
-    const closer = await live.watchSession({ session: ref, adapter: sess.source, ...ev }, (t, info) => {
-      try {
-        panel.webview.postMessage({ type: 'data', trace: t })
-        const nf = (info && info.newFindings) || []
-        if (nf.length) {
-          // alimenta el feed en vivo del panel + actualiza el badge del botón
-          panel.webview.postMessage({
-            type: 'finding',
-            findings: nf,
-            total: ((t.summary && t.summary.findings) || []).length,
-          })
-          notifyLiveFindings(nf, panel) // toast nativo (solo severidad alta)
+    const closer = await live.watchSession(
+      { session: ref, adapter: sess.source, ...ev },
+      (t, info) => {
+        try {
+          panel.webview.postMessage({ type: 'data', trace: t })
+          const nf = (info && info.newFindings) || []
+          if (nf.length) {
+            // alimenta el feed en vivo del panel + actualiza el badge del botón
+            panel.webview.postMessage({
+              type: 'finding',
+              findings: nf,
+              total: ((t.summary && t.summary.findings) || []).length,
+            })
+            notifyLiveFindings(nf, panel) // toast nativo (solo severidad alta)
+          }
+        } catch {
+          /* panel cerrado */
         }
-      } catch {
-        /* panel cerrado */
-      }
-    })
+      },
+    )
     panel.onDidDispose(() => closer())
   })
 }
@@ -231,11 +250,18 @@ async function cmdLiveSession() {
     return
   }
   const pick = await vscode.window.showQuickPick(
-    rows.slice(0, 100).map(r => ({ label: r.title || r.sessionId, description: r.sessionId, row: r })),
+    rows
+      .slice(0, 100)
+      .map(r => ({ label: r.title || r.sessionId, description: r.sessionId, row: r })),
     { placeHolder: t('pickLive') },
   )
   if (!pick) return
-  await openLiveSession({ sessionId: pick.row.sessionId, file: pick.row.file, title: pick.row.title, source: pick.row.source })
+  await openLiveSession({
+    sessionId: pick.row.sessionId,
+    file: pick.row.file,
+    title: pick.row.title,
+    source: pick.row.source,
+  })
 }
 
 // Construye el objeto que consume entity-dashboard.html desde el último agregado:
@@ -256,14 +282,25 @@ function entityFor(kind, name, dash, rows) {
 // sesión abren su timeline EN VIVO (reusa openLiveSession vía opts.onOpen).
 function openEntityDashboard(entity, rows = []) {
   const slug = String(entity.name || 'entity').replace(/[^\w.-]+/g, '-')
-  openReport(entity, 'entity-dashboard.html', t('entityPanelTitle', entity.name), `entity-${entity.kind}-${slug}.html`, {
-    // resuelve el file por sessionId si el punto no lo trae (p.ej. timelines de
-    // skill, o sesiones que salieron del re-listado) para no abrir sin ruta
-    onOpen: m => {
-      const r = (rows || []).find(x => x.sessionId === m.id) || {}
-      openLiveSession({ sessionId: m.id, file: m.file || r.file, title: r.title, source: r.source })
+  openReport(
+    entity,
+    'entity-dashboard.html',
+    t('entityPanelTitle', entity.name),
+    `entity-${entity.kind}-${slug}.html`,
+    {
+      // resuelve el file por sessionId si el punto no lo trae (p.ej. timelines de
+      // skill, o sesiones que salieron del re-listado) para no abrir sin ruta
+      onOpen: m => {
+        const r = (rows || []).find(x => x.sessionId === m.id) || {}
+        openLiveSession({
+          sessionId: m.id,
+          file: m.file || r.file,
+          title: r.title,
+          source: r.source,
+        })
+      },
     },
-  })
+  )
 }
 
 // Vista UNIFICADA: lista paginada de sesiones (rápida) + agregados bajo demanda.
@@ -281,7 +318,9 @@ async function cmdSessions() {
   const template = fs.readFileSync(path.join(ASSETS, 'sessions.html'), 'utf8')
   const panel = makePanel(t('sessionsPanelTitle'))
   panel.webview.html = injectLang(
-    buildHtml(prepareWebview(template, makeNonce(), { saveButton: false, lang: LANG }), { sessions: rows }),
+    buildHtml(prepareWebview(template, makeNonce(), { saveButton: false, lang: LANG }), {
+      sessions: rows,
+    }),
     LANG,
   )
 
@@ -315,11 +354,19 @@ async function cmdSessions() {
     if (msg.type === 'open') {
       const r = rows.find(x => x.sessionId === msg.id) || {}
       // abre la sesión EN VIVO (panel que se refresca al cambiar el archivo)
-      await openLiveSession({ sessionId: msg.id, file: msg.file || r.file, title: r.title, source: msg.source || r.source })
+      await openLiveSession({
+        sessionId: msg.id,
+        file: msg.file || r.file,
+        title: r.title,
+        source: msg.source || r.source,
+      })
     } else if (msg.type === 'openEntity') {
       // clic en un agente/skill → dashboard de uso en pestaña nueva
       if (!lastDash) return
-      openEntityDashboard(entityFor(msg.kind === 'skill' ? 'skill' : 'agent', msg.name, lastDash, rows), rows)
+      openEntityDashboard(
+        entityFor(msg.kind === 'skill' ? 'skill' : 'agent', msg.name, lastDash, rows),
+        rows,
+      )
     } else if (msg.type === 'aggregate') {
       const ids = new Set(msg.ids || [])
       const subset = rows.filter(r => ids.has(r.sessionId))
@@ -355,7 +402,12 @@ async function cmdOpenFile() {
     try {
       const trace = render.enrich(await adapters.parse({ session: file }), evalOptions(core))
       const base = path.basename(file).replace(/\.[^.]+$/, '')
-      openTimelineReport(trace, path.basename(file), base + '-timeline.html', base + '-findings.html')
+      openTimelineReport(
+        trace,
+        path.basename(file),
+        base + '-timeline.html',
+        base + '-findings.html',
+      )
     } catch (e) {
       vscode.window.showErrorMessage(t('parseFailed', (e && e.message) || ''))
     }

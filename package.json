@@ -1,0 +1,19 @@
+{
+  "name": "ai-emos",
+  "version": "0.1.0",
+  "description": "Observabilidad de flujos de trabajo con IA, agnóstica al modelo/sistema.",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "format": "prettier --write \"**/*.{mjs,js}\"",
+    "format:check": "prettier --check \"**/*.{mjs,js}\"",
+    "lint": "eslint .",
+    "check": "npm run format:check && npm run lint"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "eslint": "^9.13.0",
+    "globals": "^15.11.0",
+    "prettier": "^3.3.3"
+  }
+}

@@ -70,7 +70,11 @@ function bubbleToStep(m, idx) {
       kind: 'tool_call',
       role: 'assistant',
       label: `tool:${c.name || c.tool || 'tool'}`,
-      io: { input: c.args ?? c.input ?? null, output: c.result ?? c.output ?? null, isError: !!c.isError },
+      io: {
+        input: c.args ?? c.input ?? null,
+        output: c.result ?? c.output ?? null,
+        isError: !!c.isError,
+      },
       text: asText(m.text || m.content) || null,
     }
   }
@@ -79,7 +83,8 @@ function bubbleToStep(m, idx) {
     ...base,
     kind: role === 'tool' ? 'tool_call' : 'message',
     role,
-    label: role === 'user' ? 'prompt del usuario' : role === 'tool' ? 'resultado de tool' : 'respuesta',
+    label:
+      role === 'user' ? 'prompt del usuario' : role === 'tool' ? 'resultado de tool' : 'respuesta',
     text: asText(m.text ?? m.content ?? m.richText),
   }
 }
@@ -98,7 +103,10 @@ async function parse(opts = {}) {
   const steps = msgs.map(bubbleToStep).filter(s => s.text || s.io)
   // reindexar tras el filtro
   steps.forEach((s, i) => (s.index = i))
-  const ts = steps.map(s => s.timestamp).filter(Boolean).sort()
+  const ts = steps
+    .map(s => s.timestamp)
+    .filter(Boolean)
+    .sort()
   return {
     schemaVersion: 1,
     source: 'cursor',

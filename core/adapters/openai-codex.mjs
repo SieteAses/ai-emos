@@ -42,7 +42,9 @@ function asText(content) {
   if (typeof content === 'string') return content
   if (Array.isArray(content)) {
     return content
-      .map(c => (typeof c === 'string' ? c : c.text || c.content || c.input_text || c.output_text || ''))
+      .map(c =>
+        typeof c === 'string' ? c : c.text || c.content || c.input_text || c.output_text || '',
+      )
       .filter(Boolean)
       .join('\n')
   }
@@ -78,7 +80,13 @@ function itemToStep(it, idx, pendingCalls) {
   }
   // razonamiento
   if (type === 'reasoning') {
-    return { ...base, kind: 'thinking', role: 'assistant', label: 'razonamiento', text: asText(p.content || p.summary) }
+    return {
+      ...base,
+      kind: 'thinking',
+      role: 'assistant',
+      label: 'razonamiento',
+      text: asText(p.content || p.summary),
+    }
   }
   // tool / function call
   if (type === 'function_call' || type === 'tool_call' || type === 'local_shell_call') {
@@ -94,7 +102,11 @@ function itemToStep(it, idx, pendingCalls) {
     }
   }
   // resultado de tool
-  if (type === 'function_call_output' || type === 'tool_result' || type === 'local_shell_call_output') {
+  if (
+    type === 'function_call_output' ||
+    type === 'tool_result' ||
+    type === 'local_shell_call_output'
+  ) {
     return {
       ...base,
       kind: 'tool_call',
@@ -114,14 +126,17 @@ async function parse(opts = {}) {
   const meta = items.find(i => i.type === 'session_meta' || i.record_type === 'meta') || {}
   const pendingCalls = new Map()
   const steps = items
-    .filter(i => (i.type || i.role || i.payload))
+    .filter(i => i.type || i.role || i.payload)
     .map((it, idx) => itemToStep(it, idx, pendingCalls))
   const models = new Set()
   for (const it of items) {
     const m = it.model || it.payload?.model || meta.model
     if (m) models.add(m)
   }
-  const ts = steps.map(s => s.timestamp).filter(Boolean).sort()
+  const ts = steps
+    .map(s => s.timestamp)
+    .filter(Boolean)
+    .sort()
   return {
     schemaVersion: 1,
     source: 'openai-codex',
@@ -179,7 +194,9 @@ function detect(opts = {}) {
     // huele a codex si trae items con function_call / response item types
     try {
       const lines = readLines(s).slice(0, 20)
-      return lines.some(l => ['function_call', 'function_call_output', 'reasoning', 'session_meta'].includes(l.type))
+      return lines.some(l =>
+        ['function_call', 'function_call_output', 'reasoning', 'session_meta'].includes(l.type),
+      )
     } catch {
       return false
     }
