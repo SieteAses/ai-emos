@@ -254,10 +254,15 @@ function entityFor(kind, name, dash, rows) {
 
 // Abre el dashboard de uso de un agente/skill en una pestaña nueva. Las filas de
 // sesión abren su timeline EN VIVO (reusa openLiveSession vía opts.onOpen).
-function openEntityDashboard(entity) {
+function openEntityDashboard(entity, rows = []) {
   const slug = String(entity.name || 'entity').replace(/[^\w.-]+/g, '-')
   openReport(entity, 'entity-dashboard.html', t('entityPanelTitle', entity.name), `entity-${entity.kind}-${slug}.html`, {
-    onOpen: m => openLiveSession({ sessionId: m.id, file: m.file }),
+    // resuelve el file por sessionId si el punto no lo trae (p.ej. timelines de
+    // skill, o sesiones que salieron del re-listado) para no abrir sin ruta
+    onOpen: m => {
+      const r = (rows || []).find(x => x.sessionId === m.id) || {}
+      openLiveSession({ sessionId: m.id, file: m.file || r.file, title: r.title })
+    },
   })
 }
 
@@ -314,7 +319,7 @@ async function cmdSessions() {
     } else if (msg.type === 'openEntity') {
       // clic en un agente/skill → dashboard de uso en pestaña nueva
       if (!lastDash) return
-      openEntityDashboard(entityFor(msg.kind === 'skill' ? 'skill' : 'agent', msg.name, lastDash, rows))
+      openEntityDashboard(entityFor(msg.kind === 'skill' ? 'skill' : 'agent', msg.name, lastDash, rows), rows)
     } else if (msg.type === 'aggregate') {
       const ids = new Set(msg.ids || [])
       const subset = rows.filter(r => ids.has(r.sessionId))

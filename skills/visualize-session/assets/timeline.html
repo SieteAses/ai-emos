@@ -125,7 +125,13 @@
   .chartsvg{display:block;width:100%;height:auto;}
   .pierow{display:flex;gap:14px;align-items:center;flex-wrap:wrap;}
   .pie{flex:none;width:220px;height:220px;}
-  .chartlegend{display:flex;flex-wrap:wrap;gap:6px 12px;}
+  .chartlegend{display:flex;flex-wrap:wrap;gap:6px 8px;}
+  /* leyenda clicable: aísla una herramienta (o "todos") en el chart por turno */
+  .lgsel{font-size:11px;color:var(--mut);display:flex;align-items:center;gap:4px;cursor:pointer;padding:1px 7px;border:1px solid transparent;border-radius:7px;user-select:none;}
+  .lgsel:hover{border-color:var(--line);color:var(--tx);}
+  .lgsel.on{border-color:var(--acc);color:var(--tx);background:var(--panel2);}
+  .lgsel .kdot{width:9px;height:9px;border-radius:50%;flex:none;}
+  .lgsel .kall{background:conic-gradient(#6ea8fe,#c9a0ff,#6ee7ff,#ffb86b,#ff7eb6,#6ea8fe);}
   .diff{border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:.4em 0;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;}
   .diff .dl{padding:1px 10px;white-space:pre-wrap;word-break:break-word;}
   .diff .del{background:rgba(255,107,107,.12);color:#ff9d9d;} .diff .add{background:rgba(126,224,192,.12);color:#9af3d2;}
@@ -193,7 +199,7 @@ const I18N = {
     chTokensTurn:'tokens por turno (frescos: input+output)',
     chToolsTokensTip:'Aproximado: el log reporta tokens por turno, no por herramienta. Se reparten proporcionalmente entre las herramientas que corrió cada turno.',
     chTokensTurnTip:'Tokens frescos generados en cada turno (input+output); excluye la relectura de contexto cacheado.',
-    axisTurn:'turno', catSub:'subagente', catSkill:'skill', catOtros:'otras', turnActivity:'actividad por turno',
+    axisTurn:'turno', catSub:'subagente', catSkill:'skill', catOtros:'otras', catAll:'todos', catReason:'razonamiento', turnActivity:'actividad por turno',
     turn:'Turno', dismiss:'descartar', findingsBadge:'⚑ Tramos a revisar ({0})', segment:'tramo',
     role:{user:'usuario',assistant:'asistente',system:'sistema',tool:'tool'},
     kind:{message:'mensaje',thinking:'razonamiento',llm_call:'llamada LLM',tool_call:'herramienta',agent:'sub-agente',skill:'skill',decision:'decisión',event:'evento'},
@@ -220,7 +226,7 @@ const I18N = {
     chTokensTurn:'tokens per turn (fresh: input+output)',
     chToolsTokensTip:'Approximate: the log reports tokens per turn, not per tool. They are split proportionally across the tools each turn ran.',
     chTokensTurnTip:'Fresh tokens generated each turn (input+output); excludes re-reading cached context.',
-    axisTurn:'turn', catSub:'subagent', catSkill:'skill', catOtros:'other', turnActivity:'per-turn activity',
+    axisTurn:'turn', catSub:'subagent', catSkill:'skill', catOtros:'other', catAll:'all', catReason:'reasoning', turnActivity:'per-turn activity',
     turn:'Turn', dismiss:'dismiss', findingsBadge:'⚑ Segments to review ({0})', segment:'segment',
     role:{user:'user',assistant:'assistant',system:'system',tool:'tool'},
     kind:{message:'message',thinking:'reasoning',llm_call:'LLM call',tool_call:'tool',agent:'sub-agent',skill:'skill',decision:'decision',event:'event'},
@@ -252,7 +258,7 @@ function applyI18n(){
 }
 
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-const esc = s => (s==null?'':String(s)).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const esc = s => (s==null?'':String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fmt = n => n>=1e9?(n/1e9).toFixed(2)+'B':n>=1e6?(n/1e6).toFixed(2)+'M':n>=1e3?(n/1e3).toFixed(1)+'k':String(n||0);
 const ms = n => n==null?'':(n>=60000?(n/60000).toFixed(1)+'m':n>=1000?(n/1000).toFixed(1)+'s':n+'ms');
 // fechas en HORA LOCAL del PC (los timestamps llegan en ISO/UTC). new Date(iso)
@@ -445,19 +451,23 @@ function flash(el){el.style.outline='2px solid '+css('--acc');setTimeout(()=>el.
 
 // ---- gráficos del overview: herramientas / tokens por turno ----
 const CHART_PAL=['#6ea8fe','#c9a0ff','#6ee7ff','#ffb86b','#ff7eb6','#7ee787','#f2cc60','#ff9492','#a5d6ff','#d2a8ff'];
+let TOOL_SEL='@all';   // herramienta aislada en el chart "por turno" ('@all' = todas)
+let TOOLDATA=null;     // {turns,keys,colorOf} cacheado para re-render del chart sin recomputar
 function catKeyOf(s){
   if(s.kind==='tool_call') return (String(s.label||'').replace(/^tool:/,''))||'tool';
   if(s.kind==='agent') return '@sub';
   if(s.kind==='skill') return '@skill';
   return null;
 }
-function toolCatLabel(k){ return k==='@sub'?t('catSub'):k==='@skill'?t('catSkill'):k==='@otros'?t('catOtros'):k; }
+function toolCatLabel(k){ return k==='@sub'?t('catSub'):k==='@skill'?t('catSkill'):k==='@otros'?t('catOtros'):k==='@reason'?t('catReason'):k; }
 // agrupa los steps top-level por turno: tokens frescos (input+output) + conteo por categoría
 function turnsFromSteps(){
   const map=new Map();
   for(const s of (DATA.steps||[])){
     if(s.turn==null) continue;
     let e=map.get(s.turn); if(!e){ e={turn:s.turn,fresh:0,cats:{}}; map.set(s.turn,e); }
+    // el parser adjunta tokens a UN solo step por turno (ver core/render.mjs
+    // collectTurns), así que el max == ese único valor; el guard evita contar 0s.
     if(s.tokens){ const fr=(s.tokens.input||0)+(s.tokens.output||0); if(fr>e.fresh) e.fresh=fr; }
     const k=catKeyOf(s); if(k) e.cats[k]=(e.cats[k]||0)+1;
   }
@@ -508,10 +518,14 @@ function lineChart(turns, keys, colorOf, getY, fmtY){
   const cap=`<text x="${(padL+pw/2).toFixed(1)}" y="${h-1}" text-anchor="middle" fill="${lb}" font-size="${FS}" opacity=".65">${t('axisTurn')}</text>`;
   return `<svg class="chartsvg" viewBox="0 0 ${w} ${h}">${grid}${yA}${xA}${series}${xl}${cap}</svg>`;
 }
-// tokens por categoría: reparto proporcional del coste fresco de cada turno
+// tokens por categoría: reparto proporcional del coste fresco de cada turno.
+// Los turnos SIN herramienta (razonamiento puro) van a '@reason' para que la
+// torta sume el total de tokens frescos y cuadre con el chart de tokens/turno.
 function tokensByCat(turns, keys){
-  const tok={}; keys.forEach(k=>tok[k]=0);
-  turns.forEach(e=>{ const tc=Object.values(e.cats).reduce((a,b)=>a+b,0); if(!tc||!e.fresh) return; Object.entries(e.cats).forEach(([k,n])=>{ tok[k]=(tok[k]||0)+e.fresh*n/tc; }); });
+  const tok={}; keys.forEach(k=>tok[k]=0); tok['@reason']=0;
+  turns.forEach(e=>{ if(!e.fresh) return; const tc=Object.values(e.cats).reduce((a,b)=>a+b,0);
+    if(!tc){ tok['@reason']+=e.fresh; return; }
+    Object.entries(e.cats).forEach(([k,n])=>{ tok[k]=(tok[k]||0)+e.fresh*n/tc; }); });
   return tok;
 }
 function pieChart(keys, colorOf, vals){
@@ -524,13 +538,33 @@ function pieChart(keys, colorOf, vals){
 function chartLegend(keys, colorOf, labelFn){
   return `<div class="chartlegend">`+keys.map(k=>`<span class="lg"><span class="kdot" style="background:${colorOf[k]}"></span>${esc(labelFn?labelFn(k):toolCatLabel(k))}</span>`).join('')+`</div>`;
 }
+// cuerpo del chart "herramientas por turno": líneas (todas o la aislada) + leyenda
+// clicable ('todos' + una por herramienta). Usa TOOLDATA/TOOL_SEL (re-renderizable).
+function toolsChartBody(){
+  if(!TOOLDATA) return '';
+  const {turns,keys,colorOf}=TOOLDATA;
+  const shown = TOOL_SEL==='@all' ? keys : [TOOL_SEL];
+  const svg = lineChart(turns, shown, colorOf, (e,k)=>e.cats[k]||0, v=>String(Math.round(v)));
+  const item=(key,label,color)=>`<span class="lgsel${TOOL_SEL===key?' on':''}" data-cat="${esc(key)}">${color?`<span class="kdot" style="background:${color}"></span>`:'<span class="kdot kall"></span>'}${esc(label)}</span>`;
+  const leg = `<div class="chartlegend">`+item('@all',t('catAll'))+keys.map(k=>item(k,toolCatLabel(k),colorOf[k])).join('')+`</div>`;
+  return svg+leg;
+}
+function wireToolsChart(){
+  const box=document.getElementById('chart-tools'); if(!box) return;
+  box.querySelectorAll('.lgsel').forEach(el=>el.onclick=()=>{ TOOL_SEL=el.dataset.cat; box.innerHTML=toolsChartBody(); wireToolsChart(); });
+}
 function turnCharts(){
   const raw=turnsFromSteps(); if(!raw.length) return '';
   const {keys,colorOf,turns}=rankCats(raw);
+  TOOLDATA={turns,keys,colorOf};
+  if(TOOL_SEL!=='@all' && !keys.includes(TOOL_SEL)) TOOL_SEL='@all'; // la herramienta aislada ya no existe
   const qm=tip=>`<span class="qm" title="${esc(tip)}">?</span>`;
-  const c1=keys.length?`<div class="chartcard"><div class="charttitle">${t('chToolsCount')}</div>${lineChart(turns,keys,colorOf,(e,k)=>e.cats[k]||0,v=>String(Math.round(v)))}${chartLegend(keys,colorOf)}</div>`:'';
-  const tok=tokensByCat(turns,keys); const totTok=keys.reduce((a,k)=>a+(tok[k]||0),0);
-  const c2=(keys.length&&totTok>0)?`<div class="chartcard"><div class="charttitle">${t('chToolsTokens')} ${qm(t('chToolsTokensTip'))}</div><div class="pierow">${pieChart(keys,colorOf,tok)}${chartLegend(keys,colorOf,k=>toolCatLabel(k)+' · '+(100*(tok[k]||0)/totTok).toFixed(0)+'%')}</div></div>`:'';
+  const c1=keys.length?`<div class="chartcard"><div class="charttitle">${t('chToolsCount')}</div><div id="chart-tools">${toolsChartBody()}</div></div>`:'';
+  const tok=tokensByCat(turns,keys);
+  const pieKeys = tok['@reason']>0 ? keys.concat(['@reason']) : keys;
+  const pieCol = tok['@reason']>0 ? Object.assign({}, colorOf, {'@reason':css('--thinking')}) : colorOf;
+  const totTok=pieKeys.reduce((a,k)=>a+(tok[k]||0),0);
+  const c2=(pieKeys.length&&totTok>0)?`<div class="chartcard"><div class="charttitle">${t('chToolsTokens')} ${qm(t('chToolsTokensTip'))}</div><div class="pierow">${pieChart(pieKeys,pieCol,tok)}${chartLegend(pieKeys,pieCol,k=>toolCatLabel(k)+' · '+(100*(tok[k]||0)/totTok).toFixed(0)+'%')}</div></div>`:'';
   const c3=`<div class="chartcard"><div class="charttitle">${t('chTokensTurn')} ${qm(t('chTokensTurnTip'))}</div>${lineChart(turns,['@tok'],{'@tok':css('--acc')},(e)=>e.fresh||0,v=>fmt(Math.round(v)))}</div>`;
   // tools-por-turno (c1) y tokens-por-turno (c3) van uno bajo el otro y con el
   // mismo eje X (turnos) para comparar directo qué herramienta gastó qué tokens;
@@ -556,6 +590,7 @@ function defaultDetail(){
      ${sk?`<div class="d-sub">${t('skillsUsed')}</div>${sk}`:''}
      ${ag?`<div class="d-sub">${t('subAgentsByTokens')}</div>${ag}`:''}
      ${charts?`<div class="d-sub">${t('turnActivity')}</div>${charts}`:''}`;
+  wireToolsChart();
 }
 
 // ---- búsqueda ----
