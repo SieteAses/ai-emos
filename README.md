@@ -8,6 +8,10 @@
   <b>Observabilidad de flujos de trabajo con IA</b>, agnóstica al modelo/sistema.
 </p>
 
+<p align="center">
+  <img src="docs/demo.gif" width="840" alt="Demo: timeline interactivo de una sesión en ai-emos">
+</p>
+
 ---
 
 ## 1. ¿Qué es y para qué sirve?
@@ -57,12 +61,19 @@ nunca entra al contexto del modelo** ⇒ el costo en tokens de generar el visor 
 | Correr en CI, terminal o scripts sin instalar nada | **CLI autónomo** | nada más |
 | Disparar desde el chat y abrir el panel nativo de la extensión | **Ambos** (handoff `vscode://`) | — |
 
-**Extensión de VS Code** (también Cursor / VSCodium vía Open VSX):
+**Extensión de VS Code — desde el release (recomendado, sin compilar):** descarga el
+`.vsix` de la [última release](https://github.com/SieteAses/ai-emos/releases/latest) e
+instálalo (también sirve en Cursor / VSCodium):
 
 ```sh
-# busca "ai-emos" en la pestaña de Extensiones, o:
-code --install-extension SieteAses.ai-emos
+code --install-extension ai-emos-0.1.0.vsix
+# o en VS Code: Cmd/Ctrl+Shift+P → "Extensions: Install from VSIX…"
 ```
+
+Luego: `Cmd/Ctrl+Shift+P` → **ai-emos: Sesiones**.
+
+> Cuando esté publicado en el Marketplace / Open VSX bastará con buscar "ai-emos" en la
+> pestaña de Extensiones (o `code --install-extension SieteAses.ai-emos`).
 
 **Plugin de Claude Code** (marketplace Git):
 
