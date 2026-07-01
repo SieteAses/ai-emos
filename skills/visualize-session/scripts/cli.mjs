@@ -118,7 +118,13 @@ async function main() {
     const { serve } = await import('./server.mjs')
     const port = Number(flag('--port', null)) || 7878
     const session = flag('--session', null)
-    const { url } = await serve({ port, session, dashboard: has('--dashboard'), adapter, source: adapter })
+    const { url } = await serve({
+      port,
+      session,
+      dashboard: has('--dashboard'),
+      adapter,
+      source: adapter,
+    })
     process.stderr.write(`ai-emos: servidor en vivo → ${url}\n(ctrl-c para detener)\n`)
     if (flag('--open', null)) await handoff(url)
     return // mantiene el proceso vivo mientras el servidor escucha
@@ -139,7 +145,11 @@ async function main() {
     // persiste el baseline recién calculado para alimentar el criterio híbrido
     const saved = saveBaselines(dash.baselines)
     if (saved) process.stderr.write(`ai-emos: baseline actualizado → ${saved}\n`)
-    await output(dash, 'dashboard.html', typeof flag('--html', null) === 'string' ? flag('--html', null) : null)
+    await output(
+      dash,
+      'dashboard.html',
+      typeof flag('--html', null) === 'string' ? flag('--html', null) : null,
+    )
     return
   }
 
@@ -193,7 +203,9 @@ async function main() {
     }
   }
 
-  const sid = String(session).replace(/[^\w.-]/g, '_').slice(0, 60)
+  const sid = String(session)
+    .replace(/[^\w.-]/g, '_')
+    .slice(0, 60)
   const timelineTarget = resolveHtmlTarget(`session-timeline-${sid}.html`, openMode)
   await output(trace, 'timeline.html', timelineTarget)
   // tramos a revisar en un HTML hermano (no JSON: solo cuando se escribe HTML)
@@ -220,7 +232,11 @@ function buildBackend(mode) {
   if (!model) throw new Error('--judge-model es requerido para judge local/api')
   if (format === 'anthropic') {
     if (!apiKey) throw new Error('judge api anthropic requiere --judge-key-env con la key')
-    return judge.makeAnthropicBackend({ model, apiKey, endpoint: endpoint || 'https://api.anthropic.com' })
+    return judge.makeAnthropicBackend({
+      model,
+      apiKey,
+      endpoint: endpoint || 'https://api.anthropic.com',
+    })
   }
   if (!endpoint) throw new Error('--judge-endpoint es requerido (OpenAI-compatible)')
   return judge.makeOpenAIBackend({ endpoint, model, apiKey })
@@ -246,7 +262,10 @@ function injectData(tpl, json) {
   const safe = escapeForScript(json)
   const re = /(<script id="report-data" type="application\/json">)([\s\S]*?)(<\/script>)/
   if (re.test(tpl)) return tpl.replace(re, (m, p1, _p2, p3) => p1 + '\n' + safe + '\n' + p3)
-  return tpl.replace('</body>', () => `<script id="report-data" type="application/json">\n${safe}\n</script>\n</body>`)
+  return tpl.replace(
+    '</body>',
+    () => `<script id="report-data" type="application/json">\n${safe}\n</script>\n</body>`,
+  )
 }
 
 // evita cerrar el <script> con </script> dentro del JSON

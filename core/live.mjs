@@ -23,7 +23,9 @@ import { loadCriteria, loadBaselines } from './criteria.mjs'
 // hallazgo produce la misma clave en re-parseos sucesivos.  separa campos
 // (no aparece en rutas/labels) para evitar colisiones por concatenación.
 export function findingKey(f) {
-  return [f.path || '', f.index ?? '', f.kind || '', f.label || '', (f.flags || []).join('|')].join('')
+  return [f.path || '', f.index ?? '', f.kind || '', f.label || '', (f.flags || []).join('|')].join(
+    '',
+  )
 }
 
 const traceFindings = trace => (trace && trace.summary && trace.summary.findings) || []
@@ -99,7 +101,11 @@ function resolveWatchPaths(file) {
 // Resuelve el archivo de la sesión: el dado, o el de la fila de listSessions.
 async function resolveFile(opts) {
   if (opts.file && fs.existsSync(opts.file)) return opts.file
-  if (typeof opts.session === 'string' && /[\\/.]/.test(opts.session) && fs.existsSync(opts.session)) {
+  if (
+    typeof opts.session === 'string' &&
+    /[\\/.]/.test(opts.session) &&
+    fs.existsSync(opts.session)
+  ) {
     return opts.session
   }
   try {
@@ -126,7 +132,11 @@ async function resolveFile(opts) {
  *
  * Emite el estado inicial inmediatamente; devuelve una función para cerrar.
  */
-export async function watchSession(opts, onUpdate, { watcher = defaultWatcher, debounceMs = 250 } = {}) {
+export async function watchSession(
+  opts,
+  onUpdate,
+  { watcher = defaultWatcher, debounceMs = 250 } = {},
+) {
   const criteria = opts.criteria || loadCriteria()
   const baselines = opts.baselines || loadBaselines()
   let timer = null

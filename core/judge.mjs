@@ -185,8 +185,19 @@ export function makeAnthropicBackend({ model, apiKey, endpoint = 'https://api.an
     })
     if (!res.ok) throw new Error(`judge anthropic: HTTP ${res.status} ${await res.text()}`)
     const j = await res.json()
-    return (j.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n')
+    return (j.content || [])
+      .filter(b => b.type === 'text')
+      .map(b => b.text)
+      .join('\n')
   }
 }
 
-export default { selectCandidates, runJudge, makeOpenAIBackend, makeAnthropicBackend, parseVerdicts, buildJudgePrompt, JUDGE_SYSTEM }
+export default {
+  selectCandidates,
+  runJudge,
+  makeOpenAIBackend,
+  makeAnthropicBackend,
+  parseVerdicts,
+  buildJudgePrompt,
+  JUDGE_SYSTEM,
+}

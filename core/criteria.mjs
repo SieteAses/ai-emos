@@ -107,4 +107,11 @@ export function saveBaselines(baselines) {
   }
 }
 
-export default { DEFAULTS, loadCriteria, userCriteriaPath, baselinesPath, loadBaselines, saveBaselines }
+export default {
+  DEFAULTS,
+  loadCriteria,
+  userCriteriaPath,
+  baselinesPath,
+  loadBaselines,
+  saveBaselines,
+}

@@ -28,7 +28,13 @@ const MARKERS = path.join(os.homedir(), '.claude', 'av-markers')
 function check() {
   const out = { projectsDir: PROJECTS, exists: fs.existsSync(PROJECTS) }
   if (!out.exists) {
-    console.log(JSON.stringify({ ...out, ok: false, hint: 'No existe el dir de proyectos de Claude Code.' }, null, 2))
+    console.log(
+      JSON.stringify(
+        { ...out, ok: false, hint: 'No existe el dir de proyectos de Claude Code.' },
+        null,
+        2,
+      ),
+    )
     return
   }
   let latest = null
@@ -51,7 +57,10 @@ function check() {
   }
   if (latest) {
     try {
-      const first = fs.readFileSync(latest.file, 'utf8').split('\n').find(l => l.trim())
+      const first = fs
+        .readFileSync(latest.file, 'utf8')
+        .split('\n')
+        .find(l => l.trim())
       version = JSON.parse(first).version || null
     } catch {
       /* noop */

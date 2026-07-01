@@ -1,0 +1,7 @@
+node_modules
+**/node_modules
+vscode-extension/bundled
+**/*.vsix
+*-timeline-*.html
+session-timeline-*.html
+package-lock.json

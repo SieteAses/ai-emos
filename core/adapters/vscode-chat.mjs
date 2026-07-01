@@ -60,7 +60,10 @@ function readLines(file) {
 
 function firstLine(file) {
   try {
-    const first = fs.readFileSync(file, 'utf8').split('\n').find(l => l.trim())
+    const first = fs
+      .readFileSync(file, 'utf8')
+      .split('\n')
+      .find(l => l.trim())
     return first ? JSON.parse(first) : null
   } catch {
     return null
@@ -87,7 +90,8 @@ function truncate(v) {
 function clip(v, maxStr = 4000, depth = 0) {
   if (v == null) return v
   if (typeof v === 'string') return v.length > maxStr ? v.slice(0, maxStr) + '…[recortado]' : v
-  if (Array.isArray(v)) return depth > 4 ? '[…]' : v.slice(0, 60).map(x => clip(x, maxStr, depth + 1))
+  if (Array.isArray(v))
+    return depth > 4 ? '[…]' : v.slice(0, 60).map(x => clip(x, maxStr, depth + 1))
   if (typeof v === 'object') {
     if (depth > 6) return '{…}'
     const o = {}
@@ -156,7 +160,8 @@ function* chatFiles(opts = {}) {
     }
     for (const h of hashes) {
       if (!h.isDirectory()) continue
-      for (const f of jsonlIn(path.join(wsRoot, h.name, 'chatSessions'))) yield { file: f, hash: h.name }
+      for (const f of jsonlIn(path.join(wsRoot, h.name, 'chatSessions')))
+        yield { file: f, hash: h.name }
     }
     for (const f of jsonlIn(path.join(userDir, 'globalStorage', 'emptyWindowChatSessions'))) {
       yield { file: f, hash: null }
@@ -279,7 +284,12 @@ function userTextOf(message) {
   if (typeof message === 'string') return message
   if (typeof message.text === 'string') return message.text
   if (Array.isArray(message.parts)) {
-    return message.parts.map(p => (typeof p === 'string' ? p : p?.text || p?.value || '')).filter(Boolean).join('\n') || null
+    return (
+      message.parts
+        .map(p => (typeof p === 'string' ? p : p?.text || p?.value || ''))
+        .filter(Boolean)
+        .join('\n') || null
+    )
   }
   return null
 }
@@ -298,7 +308,12 @@ function firstUserText(session) {
 // ---------------------------------------------------------------------------
 function isCopilotTranscript(file) {
   const o = firstLine(file)
-  return !!(o && typeof o.type === 'string' && o.data && (o.type === 'session.start' || o.type.startsWith('assistant.') || o.type.startsWith('tool.')))
+  return !!(
+    o &&
+    typeof o.type === 'string' &&
+    o.data &&
+    (o.type === 'session.start' || o.type.startsWith('assistant.') || o.type.startsWith('tool.'))
+  )
 }
 
 function parseCopilotTranscript(file) {
@@ -432,10 +447,15 @@ async function listSessions(opts = {}) {
     let title = firstUserText(session)
     let requestCount = reqs.length
     // tokens: Copilot los reporta por request en chatSessions (al completar)
-    const tokens = reqs.reduce((a, r) => a + (Number(r.promptTokens) || 0) + (Number(r.completionTokens) || 0), 0)
+    const tokens = reqs.reduce(
+      (a, r) => a + (Number(r.promptTokens) || 0) + (Number(r.completionTokens) || 0),
+      0,
+    )
     if (transcript && (!title || !requestCount)) {
       transMeta = parseCopilotTranscript(transcript)
-      requestCount = requestCount || transMeta.steps.filter(s => s.kind === 'message' && s.role === 'assistant').length
+      requestCount =
+        requestCount ||
+        transMeta.steps.filter(s => s.kind === 'message' && s.role === 'assistant').length
       if (!title && transMeta.firstAssistant) title = transMeta.firstAssistant
     }
     rows.push({
@@ -478,7 +498,11 @@ function resolveSession(opts) {
     const id = sess.endsWith('.jsonl') ? path.basename(sess, '.jsonl') : sess
     for (const ent of chatFiles(opts)) {
       if (path.basename(ent.file, '.jsonl') === id) {
-        return { transcript: copilotTranscriptFor(ent.file, id), chatSessions: ent.file, sessionId: id }
+        return {
+          transcript: copilotTranscriptFor(ent.file, id),
+          chatSessions: ent.file,
+          sessionId: id,
+        }
       }
     }
   }
@@ -487,9 +511,13 @@ function resolveSession(opts) {
 
 // Etiqueta corta de una inlineReference (un archivo citado dentro del markdown).
 function refLabel(ref) {
-  const p = ref && (ref.fsPath || ref.path || ref.external || (ref.uri && (ref.uri.fsPath || ref.uri.path)))
+  const p =
+    ref && (ref.fsPath || ref.path || ref.external || (ref.uri && (ref.uri.fsPath || ref.uri.path)))
   if (!p) return null
-  const base = String(p).replace(/[/\\]+$/, '').split(/[/\\]/).pop()
+  const base = String(p)
+    .replace(/[/\\]+$/, '')
+    .split(/[/\\]/)
+    .pop()
   return base || null
 }
 
@@ -513,8 +541,17 @@ function responseParts(r) {
     } else if (kind === 'inlineReference') {
       const l = refLabel(p.inlineReference)
       if (l) answer += '`' + l + '`'
-    } else if (kind === 'toolInvocationSerialized' || p.toolId || p.toolName || (kind && /tool/i.test(kind))) {
-      tools.push({ name: p.toolName || p.toolId || 'tool', input: p.toolInput ?? p.toolSpecificData ?? p.input ?? null, isError: !!p.isError })
+    } else if (
+      kind === 'toolInvocationSerialized' ||
+      p.toolId ||
+      p.toolName ||
+      (kind && /tool/i.test(kind))
+    ) {
+      tools.push({
+        name: p.toolName || p.toolId || 'tool',
+        input: p.toolInput ?? p.toolSpecificData ?? p.input ?? null,
+        isError: !!p.isError,
+      })
     } else if (typeof p.value === 'string') {
       answer += p.value
     } else if (typeof p.text === 'string') {
@@ -534,7 +571,8 @@ function requestTokens(r) {
 
 async function parse(opts = {}) {
   const res = resolveSession(opts)
-  if (!res) throw new Error(`No encontré la sesión vscode-chat/copilot: ${opts.session || opts.file}`)
+  if (!res)
+    throw new Error(`No encontré la sesión vscode-chat/copilot: ${opts.session || opts.file}`)
 
   // chatSessions (panel): metadatos + prompt del usuario + respuesta final + tokens
   // (se llena al completar la sesión). Transcripto de Copilot: el trabajo agéntico
@@ -567,7 +605,15 @@ async function parse(opts = {}) {
       const utext = userTextOf(r.message)
       if (utext != null) {
         const tr = truncate(utext)
-        push({ timestamp: null, kind: 'message', role: 'user', label: 'prompt del usuario', text: tr.value, turn, io: tr.truncated ? { truncated: true } : null })
+        push({
+          timestamp: null,
+          kind: 'message',
+          role: 'user',
+          label: 'prompt del usuario',
+          text: tr.value,
+          turn,
+          io: tr.truncated ? { truncated: true } : null,
+        })
       }
       // 2) trabajo agéntico: del transcripto (razonamiento + tools reales) en la
       //    primera request; si no hay transcripto, de las partes del response.
@@ -577,10 +623,26 @@ async function parse(opts = {}) {
       } else {
         for (const th of thinkings) {
           const tr = truncate(th.trim())
-          if (tr.value) push({ timestamp: null, kind: 'thinking', role: 'assistant', label: 'razonamiento', text: tr.value, turn, io: tr.truncated ? { truncated: true } : null })
+          if (tr.value)
+            push({
+              timestamp: null,
+              kind: 'thinking',
+              role: 'assistant',
+              label: 'razonamiento',
+              text: tr.value,
+              turn,
+              io: tr.truncated ? { truncated: true } : null,
+            })
         }
         for (const tl of tools) {
-          push({ timestamp: null, kind: 'tool_call', role: 'assistant', label: `tool:${tl.name}`, turn, io: { input: tl.input == null ? null : clip(tl.input), isError: tl.isError } })
+          push({
+            timestamp: null,
+            kind: 'tool_call',
+            role: 'assistant',
+            label: `tool:${tl.name}`,
+            turn,
+            io: { input: tl.input == null ? null : clip(tl.input), isError: tl.isError },
+          })
         }
       }
       // 3) respuesta final + tokens del turno
@@ -589,23 +651,38 @@ async function parse(opts = {}) {
       if (model) models.add(model)
       if (answer) {
         const tr = truncate(answer)
-        push({ timestamp: null, kind: 'message', role: 'assistant', label: 'respuesta', text: tr.value, turn, model, tokens: tok, io: tr.truncated ? { truncated: true } : null })
+        push({
+          timestamp: null,
+          kind: 'message',
+          role: 'assistant',
+          label: 'respuesta',
+          text: tr.value,
+          turn,
+          model,
+          tokens: tok,
+          io: tr.truncated ? { truncated: true } : null,
+        })
       } else if (tok) {
         // sin texto final pero con tokens: cuélgalos del último paso del turno
         const last = steps[steps.length - 1]
         if (last && !last.tokens) last.tokens = tok
       }
     })
-    startedMs = snapshot?.creationDate ?? (transcriptParsed?.startTime ? Date.parse(transcriptParsed.startTime) : null)
+    startedMs =
+      snapshot?.creationDate ??
+      (transcriptParsed?.startTime ? Date.parse(transcriptParsed.startTime) : null)
     lastTs = transcriptParsed?.lastTs || null
     title = firstUserText(snapshot) || transcriptParsed?.firstAssistant || null
   } else if (transcriptSteps.length) {
     // sesión viva: el chatSessions aún no se volcó; muestra el transcripto.
     steps = transcriptSteps
-    startedMs = snapshot?.creationDate ?? (transcriptParsed?.startTime ? Date.parse(transcriptParsed.startTime) : null)
+    startedMs =
+      snapshot?.creationDate ??
+      (transcriptParsed?.startTime ? Date.parse(transcriptParsed.startTime) : null)
     lastTs = transcriptParsed?.lastTs
     title = transcriptParsed?.firstAssistant || null
-    if (selModel == null && transcriptParsed?.copilotVersion) models.add(`copilot/${transcriptParsed.copilotVersion}`)
+    if (selModel == null && transcriptParsed?.copilotVersion)
+      models.add(`copilot/${transcriptParsed.copilotVersion}`)
   } else {
     startedMs = snapshot?.creationDate ?? null
     title = firstUserText(snapshot || {})
@@ -636,7 +713,14 @@ async function parse(opts = {}) {
 // ---------------------------------------------------------------------------
 function looksLikeVscodeChat(file) {
   const o = firstLine(file)
-  if (o && o.kind === 0 && o.v && (o.v.sessionId || o.v.responderUsername) && Array.isArray(o.v.requests)) return true
+  if (
+    o &&
+    o.kind === 0 &&
+    o.v &&
+    (o.v.sessionId || o.v.responderUsername) &&
+    Array.isArray(o.v.requests)
+  )
+    return true
   return isCopilotTranscript(file)
 }
 

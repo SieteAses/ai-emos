@@ -52,7 +52,16 @@ export class Tracer {
     return this
   }
   tool(name, { input, output, isError, tokens, durationMs, parentId } = {}) {
-    this._write({ kind: 'tool_call', label: `tool:${name}`, input, output, isError, tokens, durationMs, parentId })
+    this._write({
+      kind: 'tool_call',
+      label: `tool:${name}`,
+      input,
+      output,
+      isError,
+      tokens,
+      durationMs,
+      parentId,
+    })
     return this
   }
   skill(name, extra = {}) {
@@ -60,7 +69,11 @@ export class Tracer {
     return this
   }
   decision(prompt, { options, chosen, decidedBy = 'human', interrupted = false } = {}) {
-    this._write({ kind: 'decision', label: 'decisión humana', decision: { prompt, options, chosen, decidedBy, interrupted } })
+    this._write({
+      kind: 'decision',
+      label: 'decisión humana',
+      decision: { prompt, options, chosen, decidedBy, interrupted },
+    })
     return this
   }
   event(label, extra = {}) {
@@ -71,13 +84,30 @@ export class Tracer {
   // sub-agente: devuelve un proxy que etiqueta sus pasos con parentId
   agent(name, { id, tokens, durationMs, stats } = {}) {
     const agentId = id || `a${Math.floor(performance.now())}_${name}`
-    this._write({ kind: 'agent', label: `agente:${name}`, agentName: name, agentId, tokens, durationMs, stats })
+    this._write({
+      kind: 'agent',
+      label: `agente:${name}`,
+      agentName: name,
+      agentId,
+      tokens,
+      durationMs,
+      stats,
+    })
     const self = this
     const child = pid => ({
-      message: (role, text, e = {}) => (self._write({ kind: 'message', role, text, parentId: pid, ...e }), child(pid)),
-      thinking: (text, e = {}) => (self._write({ kind: 'thinking', role: 'assistant', text, parentId: pid, ...e }), child(pid)),
+      message: (role, text, e = {}) => (
+        self._write({ kind: 'message', role, text, parentId: pid, ...e }),
+        child(pid)
+      ),
+      thinking: (text, e = {}) => (
+        self._write({ kind: 'thinking', role: 'assistant', text, parentId: pid, ...e }),
+        child(pid)
+      ),
       tool: (n, o = {}) => (self.tool(n, { ...o, parentId: pid }), child(pid)),
-      llm: (label, o = {}) => (self._write({ kind: 'llm_call', label, parentId: pid, ...o }), child(pid)),
+      llm: (label, o = {}) => (
+        self._write({ kind: 'llm_call', label, parentId: pid, ...o }),
+        child(pid)
+      ),
     })
     return child(agentId)
   }

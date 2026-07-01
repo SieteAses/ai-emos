@@ -7,7 +7,13 @@
 const crypto = require('crypto')
 
 const fmtTok = n =>
-  n >= 1e9 ? (n / 1e9).toFixed(2) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'k' : String(n || 0)
+  n >= 1e9
+    ? (n / 1e9).toFixed(2) + 'B'
+    : n >= 1e6
+      ? (n / 1e6).toFixed(2) + 'M'
+      : n >= 1e3
+        ? (n / 1e3).toFixed(1) + 'k'
+        : String(n || 0)
 
 const makeNonce = () => crypto.randomBytes(16).toString('hex')
 
@@ -71,7 +77,12 @@ const I18N = {
 }
 
 // Normaliza una locale de VS Code (p.ej. 'en', 'en-US', 'es', 'pt-br') a 'es'|'en'.
-const pickLang = l => (String(l || '').toLowerCase().startsWith('en') ? 'en' : 'es')
+const pickLang = l =>
+  String(l || '')
+    .toLowerCase()
+    .startsWith('en')
+    ? 'en'
+    : 'es'
 
 // tr('es','savedAt', path) → texto con placeholders {0},{1}… reemplazados.
 function tr(lang, key, ...args) {
@@ -104,8 +115,12 @@ function injectLang(html, lang) {
 function buildHtml(template, data) {
   const safe = escapeForScript(JSON.stringify(data))
   const re = /(<script\b[^>]*\bid="report-data"[^>]*>)([\s\S]*?)(<\/script>)/
-  if (re.test(template)) return template.replace(re, (m, p1, _p2, p3) => p1 + '\n' + safe + '\n' + p3)
-  return template.replace('</body>', () => `<script id="report-data" type="application/json">\n${safe}\n</script>\n</body>`)
+  if (re.test(template))
+    return template.replace(re, (m, p1, _p2, p3) => p1 + '\n' + safe + '\n' + p3)
+  return template.replace(
+    '</body>',
+    () => `<script id="report-data" type="application/json">\n${safe}\n</script>\n</body>`,
+  )
 }
 
 // Adapta un template (SIN datos aún) para webview de VS Code:
@@ -126,7 +141,8 @@ function prepareWebview(template, nonce, opts = {}) {
   const bootstrap = `<script>window.__vscodeApi=(function(){try{return acquireVsCodeApi();}catch(e){return null;}})();</script>`
 
   let html = template
-  if (html.includes('<head>')) html = html.replace('<head>', () => '<head>\n' + csp + '\n' + bootstrap)
+  if (html.includes('<head>'))
+    html = html.replace('<head>', () => '<head>\n' + csp + '\n' + bootstrap)
   else html = csp + bootstrap + html
 
   // nonce a todos los <script> del template + bootstrap (ANTES de inyectar datos)
@@ -158,4 +174,14 @@ function prepareWebview(template, nonce, opts = {}) {
   return html
 }
 
-module.exports = { fmtTok, makeNonce, escapeForScript, buildHtml, prepareWebview, injectLang, pickLang, tr, I18N }
+module.exports = {
+  fmtTok,
+  makeNonce,
+  escapeForScript,
+  buildHtml,
+  prepareWebview,
+  injectLang,
+  pickLang,
+  tr,
+  I18N,
+}

@@ -29,7 +29,15 @@ export function pick(opts = {}) {
     const a = byName(wanted)
     if (a) return a
     // alias sueltos
-    const alias = { 'claude': 'claude-code', 'cc': 'claude-code', 'codex': 'openai-codex', 'otel-genai': 'otel-genai', 'copilot': 'vscode-chat', 'vscode': 'vscode-chat', 'vs-code': 'vscode-chat' }
+    const alias = {
+      claude: 'claude-code',
+      cc: 'claude-code',
+      codex: 'openai-codex',
+      'otel-genai': 'otel-genai',
+      copilot: 'vscode-chat',
+      vscode: 'vscode-chat',
+      'vs-code': 'vscode-chat',
+    }
     if (alias[wanted]) return byName(alias[wanted])
   }
   for (const a of ADAPTERS) {
@@ -44,7 +52,10 @@ export function pick(opts = {}) {
 
 export async function parse(opts = {}) {
   const a = pick(opts)
-  if (!a) throw new Error('No encontré un adaptador para esta fuente. Usa --adapter <claude-code|ndjson|otel-genai|cursor|openai-codex|opencode|vscode-chat>.')
+  if (!a)
+    throw new Error(
+      'No encontré un adaptador para esta fuente. Usa --adapter <claude-code|ndjson|otel-genai|cursor|openai-codex|opencode|vscode-chat>.',
+    )
   const trace = await a.parse(opts)
   trace.source = trace.source || a.name
   return trace

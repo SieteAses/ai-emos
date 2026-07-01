@@ -83,8 +83,12 @@ function spanKind(a, name) {
 }
 
 function spanTokens(a) {
-  const input = a['gen_ai.usage.input_tokens'] ?? a['llm.token_count.prompt'] ?? a['gen_ai.usage.prompt_tokens']
-  const output = a['gen_ai.usage.output_tokens'] ?? a['llm.token_count.completion'] ?? a['gen_ai.usage.completion_tokens']
+  const input =
+    a['gen_ai.usage.input_tokens'] ?? a['llm.token_count.prompt'] ?? a['gen_ai.usage.prompt_tokens']
+  const output =
+    a['gen_ai.usage.output_tokens'] ??
+    a['llm.token_count.completion'] ??
+    a['gen_ai.usage.completion_tokens']
   if (input == null && output == null) return null
   const i = Number(input || 0)
   const o = Number(output || 0)
@@ -92,20 +96,31 @@ function spanTokens(a) {
 }
 
 function spanIO(a) {
-  const input = a['gen_ai.prompt'] ?? a['input.value'] ?? a['llm.input_messages'] ?? a['gen_ai.tool.input']
-  const output = a['gen_ai.completion'] ?? a['output.value'] ?? a['llm.output_messages'] ?? a['gen_ai.tool.output']
-  const isError = a['error'] === true || (a['otel.status_code'] || '').toString().toUpperCase() === 'ERROR'
+  const input =
+    a['gen_ai.prompt'] ?? a['input.value'] ?? a['llm.input_messages'] ?? a['gen_ai.tool.input']
+  const output =
+    a['gen_ai.completion'] ??
+    a['output.value'] ??
+    a['llm.output_messages'] ??
+    a['gen_ai.tool.output']
+  const isError =
+    a['error'] === true || (a['otel.status_code'] || '').toString().toUpperCase() === 'ERROR'
   if (input == null && output == null && !isError) return null
   return { input: input ?? null, output: output ?? null, isError }
 }
 
 function kindToCanonical(k) {
   switch (k) {
-    case 'LLM': return 'llm_call'
-    case 'TOOL': return 'tool_call'
-    case 'AGENT': return 'agent'
-    case 'RETRIEVER': return 'tool_call'
-    default: return 'event' // CHAIN u otros
+    case 'LLM':
+      return 'llm_call'
+    case 'TOOL':
+      return 'tool_call'
+    case 'AGENT':
+      return 'agent'
+    case 'RETRIEVER':
+      return 'tool_call'
+    default:
+      return 'event' // CHAIN u otros
   }
 }
 
@@ -115,15 +130,20 @@ function spanToStep(sp, idx) {
   const kind = kindToCanonical(k)
   const model = a['gen_ai.request.model'] || a['llm.model_name'] || null
   const toolName = a['gen_ai.tool.name'] || a['tool.name'] || sp.name
-  const durationMs = sp.endNano && sp.startNano ? Math.round((sp.endNano - sp.startNano) / 1e6) : null
+  const durationMs =
+    sp.endNano && sp.startNano ? Math.round((sp.endNano - sp.startNano) / 1e6) : null
   const step = {
     index: idx,
     timestamp: nanoToIso(sp.startNano),
     kind,
     label:
-      kind === 'tool_call' ? `tool:${toolName}` :
-      kind === 'agent' ? `agente:${a['gen_ai.agent.name'] || sp.name}` :
-      kind === 'llm_call' ? `llm:${model || sp.name}` : sp.name,
+      kind === 'tool_call'
+        ? `tool:${toolName}`
+        : kind === 'agent'
+          ? `agente:${a['gen_ai.agent.name'] || sp.name}`
+          : kind === 'llm_call'
+            ? `llm:${model || sp.name}`
+            : sp.name,
     role: kind === 'llm_call' ? 'assistant' : null,
     text: null,
     io: spanIO(a),
@@ -158,7 +178,9 @@ async function parse(opts = {}) {
   if (!spans.length) throw new Error('OTel: no encontré spans')
 
   // elegir un trace
-  const traceId = opts.traceId || (opts.session && spans.some(s => s.traceId === opts.session) ? opts.session : spans[0].traceId)
+  const traceId =
+    opts.traceId ||
+    (opts.session && spans.some(s => s.traceId === opts.session) ? opts.session : spans[0].traceId)
   spans = spans.filter(s => s.traceId === traceId).sort((a, b) => a.startNano - b.startNano)
 
   const models = new Set()
@@ -186,8 +208,14 @@ async function parse(opts = {}) {
     }
   }
 
-  const ts = spans.map(s => nanoToIso(s.startNano)).filter(Boolean).sort()
-  const endTs = spans.map(s => nanoToIso(s.endNano)).filter(Boolean).sort()
+  const ts = spans
+    .map(s => nanoToIso(s.startNano))
+    .filter(Boolean)
+    .sort()
+  const endTs = spans
+    .map(s => nanoToIso(s.endNano))
+    .filter(Boolean)
+    .sort()
   return {
     schemaVersion: 1,
     source: 'otel-genai',

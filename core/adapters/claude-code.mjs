@@ -67,7 +67,8 @@ function safeStringify(v) {
 function clip(v, maxStr = 4000, depth = 0) {
   if (v == null) return v
   if (typeof v === 'string') return v.length > maxStr ? v.slice(0, maxStr) + '…[recortado]' : v
-  if (Array.isArray(v)) return depth > 4 ? '[…]' : v.slice(0, 60).map(x => clip(x, maxStr, depth + 1))
+  if (Array.isArray(v))
+    return depth > 4 ? '[…]' : v.slice(0, 60).map(x => clip(x, maxStr, depth + 1))
   if (typeof v === 'object') {
     if (depth > 6) return '{…}'
     const o = {}
@@ -256,9 +257,7 @@ function buildSubagentMap(mainFile, sessionId) {
 
 function metaAgentType(jsonlPath) {
   try {
-    const m = JSON.parse(
-      fs.readFileSync(jsonlPath.replace(/\.jsonl$/, '.meta.json'), 'utf8'),
-    )
+    const m = JSON.parse(fs.readFileSync(jsonlPath.replace(/\.jsonl$/, '.meta.json'), 'utf8'))
     if (m && typeof m.agentType === 'string') return m.agentType
   } catch {
     /* sin meta */
@@ -575,10 +574,6 @@ function fillFromToolResult(step, tur, ctx) {
     const subFile = ctx.subagentMap.get(tur.agentId)
     if (subFile && ctx.depth < 6) {
       const subEntries = readLines(subFile)
-      const subMap = buildSubagentMap(
-        path.dirname(path.dirname(path.dirname(subFile))),
-        path.basename(path.dirname(path.dirname(subFile))),
-      )
       // los sub-agentes anidados comparten el mismo dir subagents/; reusar mapa raíz
       const nested = parseTranscript(subEntries, {
         subagentMap: ctx.subagentMap,
@@ -630,13 +625,21 @@ async function parse(opts = {}) {
 
 function looksLikeClaude(file) {
   try {
-    const first = fs.readFileSync(file, 'utf8').split('\n').find(l => l.trim())
+    const first = fs
+      .readFileSync(file, 'utf8')
+      .split('\n')
+      .find(l => l.trim())
     if (!first) return false
     const o = JSON.parse(first)
     // transcripts de Claude Code: traen type/uuid/sessionId y NO el `kind` del NDJSON.
     // `o.data === undefined` excluye el transcripto de Copilot ({type,data,id,parentId}),
     // que también trae `type` sin `kind`.
-    return !!(o && (o.sessionId || o.uuid || o.type) && o.kind === undefined && o.data === undefined)
+    return !!(
+      o &&
+      (o.sessionId || o.uuid || o.type) &&
+      o.kind === undefined &&
+      o.data === undefined
+    )
   } catch {
     return false
   }

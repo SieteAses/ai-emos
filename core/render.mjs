@@ -26,8 +26,16 @@ const FLAG_META = {
   retry: { category: 'friccion', severity: 'media', why: 'reintento del mismo paso tras un error' },
   interrupted: { category: 'friccion', severity: 'media', why: 'el usuario interrumpió el turno' },
   slow: { category: 'latencia', severity: 'media', why: 'sub-agente lento (≥ p90 de duración)' },
-  expensive: { category: 'eficiencia', severity: 'media', why: 'sub-agente caro (≥ p90 de tokens)' },
-  'cold-cache': { category: 'eficiencia', severity: 'media', why: 'input grande con poca caché (recontextualización)' },
+  expensive: {
+    category: 'eficiencia',
+    severity: 'media',
+    why: 'sub-agente caro (≥ p90 de tokens)',
+  },
+  'cold-cache': {
+    category: 'eficiencia',
+    severity: 'media',
+    why: 'input grande con poca caché (recontextualización)',
+  },
 }
 
 function sumTokens(steps) {
@@ -138,7 +146,10 @@ function flagSteps(steps, ctx, findings, pathLabel = '') {
 
     if (s.tokens) {
       const { input = 0, cacheRead = 0 } = s.tokens
-      if (input > criteria.coldCache.minInput && cacheRead < input * criteria.coldCache.minCacheRatio) {
+      if (
+        input > criteria.coldCache.minInput &&
+        cacheRead < input * criteria.coldCache.minCacheRatio
+      ) {
         flags.add('cold-cache')
         triggers['cold-cache'] = 'absoluto'
       }
@@ -179,8 +190,14 @@ function flagSteps(steps, ctx, findings, pathLabel = '') {
 // stats nativas tipo `<tool>Count` → frecuencia de herramientas por nombre.
 // Excluye `toolUseCount` (es el total) y stats que no son conteos de tool.
 const STAT_TO_TOOL = {
-  readCount: 'Read', bashCount: 'Bash', editFileCount: 'Edit', writeCount: 'Write',
-  grepCount: 'Grep', globCount: 'Glob', webFetchCount: 'WebFetch', webSearchCount: 'WebSearch',
+  readCount: 'Read',
+  bashCount: 'Bash',
+  editFileCount: 'Edit',
+  writeCount: 'Write',
+  grepCount: 'Grep',
+  globCount: 'Glob',
+  webFetchCount: 'WebFetch',
+  webSearchCount: 'WebSearch',
 }
 const NON_TOOL_COUNTS = new Set(['toolUseCount'])
 function toolsFromStats(stats) {
@@ -404,9 +421,18 @@ export function aggregate(traces) {
     decisions += t.summary?.decisions?.length || 0
     findings += t.summary?.findings?.length || 0
     for (const a of t.summary?.agents || []) {
-      const r =
-        agentTotals.get(a.name) ||
-        { tokens: 0, calls: 0, durationMs: 0, tokensArr: [], durArr: [], tools: {}, errors: 0, retries: 0, toolUses: 0, sessions: new Set() }
+      const r = agentTotals.get(a.name) || {
+        tokens: 0,
+        calls: 0,
+        durationMs: 0,
+        tokensArr: [],
+        durArr: [],
+        tools: {},
+        errors: 0,
+        retries: 0,
+        toolUses: 0,
+        sessions: new Set(),
+      }
       r.tokens += a.tokens || 0
       r.calls += 1
       r.durationMs += a.durationMs || 0
@@ -425,7 +451,14 @@ export function aggregate(traces) {
     // dentro de la sesión. Alimenta el drill-down "agente en el tiempo".
     const perAgent = new Map()
     for (const a of t.summary?.agents || []) {
-      const e = perAgent.get(a.name) || { tokens: 0, durationMs: 0, errors: 0, retries: 0, calls: 0, toolUses: 0 }
+      const e = perAgent.get(a.name) || {
+        tokens: 0,
+        durationMs: 0,
+        errors: 0,
+        retries: 0,
+        calls: 0,
+        toolUses: 0,
+      }
       e.tokens += a.tokens || 0
       e.durationMs += a.durationMs || 0
       e.errors += a.errors || 0
@@ -496,8 +529,18 @@ export function aggregate(traces) {
   const baselines = {}
   for (const [name, r] of agentTotals.entries()) {
     baselines[name] = {
-      tokens: { mean: mean(r.tokensArr), std: stddev(r.tokensArr), p90: r.tokensArr.length ? percentile(r.tokensArr, 90) : 0, samples: r.tokensArr.length },
-      durationMs: { mean: mean(r.durArr), std: stddev(r.durArr), p90: r.durArr.length ? percentile(r.durArr, 90) : 0, samples: r.durArr.length },
+      tokens: {
+        mean: mean(r.tokensArr),
+        std: stddev(r.tokensArr),
+        p90: r.tokensArr.length ? percentile(r.tokensArr, 90) : 0,
+        samples: r.tokensArr.length,
+      },
+      durationMs: {
+        mean: mean(r.durArr),
+        std: stddev(r.durArr),
+        p90: r.durArr.length ? percentile(r.durArr, 90) : 0,
+        samples: r.durArr.length,
+      },
     }
   }
 
